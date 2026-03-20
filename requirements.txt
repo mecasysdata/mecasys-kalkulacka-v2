@@ -1,5 +1,6 @@
 streamlit
 pandas
-st-gsheets-connection
 xgboost
-joblib
+scikit-learn
+gspread
+google-auth
