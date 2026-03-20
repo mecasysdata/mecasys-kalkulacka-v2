@@ -2,11 +2,12 @@ import streamlit as st
 import pandas as pd
 from xgboost import XGBRegressor
 import pickle
+import gspread
 
-st.set_page_config(page_title="TEST – Overenie dát a modelov", layout="wide")
+st.set_page_config(page_title="TEST – Overenie dát, modelov a zápisu", layout="wide")
 
 st.title("TEST APLIKÁCIE – KROK 1")
-st.write("Overíme načítanie Google Sheets, modelov a vstupných premenných.")
+st.write("Overíme načítanie Google Sheets, modelov, vstupov a zápis do databázy.")
 
 # -----------------------------------------
 # Cesty k modelom a vstupným súborom
@@ -92,7 +93,7 @@ for name, url in URLS.items():
 df_main = loaded_sheets.get("databaza_ponuk")
 
 if df_main is None:
-    st.error("❌ Hlavný sheet 'databaza_ponuk' sa nepodarilo načítať. Nie je možné analyzovať vstupy.")
+    st.error("❌ Hlavný sheet 'databaza_ponuk' sa nepodarilo načítať.")
 else:
     st.success("Hlavný dataset načítaný – môžeme analyzovať vstupy modelov.")
 
@@ -116,7 +117,6 @@ try:
 except Exception as e:
     st.error(f"Chyba pri načítaní stĺpcov M1: {e}")
 
-# Analýza vstupov M1
 if df_main is not None:
     analyze_input_columns(df_main, cols_m1, "Model M1 (čas)")
 
@@ -140,6 +140,24 @@ try:
 except Exception as e:
     st.error(f"Chyba pri načítaní stĺpcov M2: {e}")
 
-# Analýza vstupov M2
 if df_main is not None:
     analyze_input_columns(df_main, cols_m2, "Model M2 (cena)")
+
+# -----------------------------------------
+# 4️⃣ Test zápisu do Google Sheets (public sheet)
+# -----------------------------------------
+st.header("4️⃣ Test zápisu do Google Sheets")
+
+try:
+    gc = gspread.client.Client(auth=None)
+    gc.session = gspread.httpsession.HTTPSession()
+
+    sheet = gc.open_by_url(URLS["databaza_ponuk"]).sheet1
+
+    test_row = ["TEST", "Zápis funguje"]
+
+    sheet.append_row(test_row)
+
+    st.success("Zápis prebehol úspešne!")
+except Exception as e:
+    st.error(f"Chyba pri zápise: {e}")
