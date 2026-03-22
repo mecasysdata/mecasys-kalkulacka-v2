@@ -21,8 +21,9 @@ def load_sheet_data():
         response = requests.get(SHEET_CSV_URL)
         response.encoding = 'utf-8'
         df = pd.read_csv(StringIO(response.text))
+        # OPRAVENÉ: Pridané .str pred .upper()
         for col in df.columns:
-            df[col] = df[col].astype(str).str.strip().upper()
+            df[col] = df[col].astype(str).str.strip().str.upper()
         return df
     except Exception as e:
         st.error(f"Chyba pri načítaní číselníka: {e}")
@@ -30,7 +31,6 @@ def load_sheet_data():
 
 @st.cache_resource
 def load_ai_model():
-    # Cesty k súborom (predpokladáme priečinok MECASYS_APP)
     model_path = os.path.join('MECASYS_APP', 'finalny_model.json')
     columns_path = os.path.join('MECASYS_APP', 'stlpce_modelu.pkl')
     
@@ -51,7 +51,6 @@ st.markdown("---")
 with st.sidebar:
     st.header("Nastavenia")
     v_ks = st.number_input("Počet kusov v zákazke", value=1, min_value=1, step=1)
-    st.info("Počet kusov ovplyvňuje celkový čas logaritmickou mierkou modelu.")
 
 c1, c2 = st.columns(2)
 
@@ -74,10 +73,6 @@ with c2:
     st.subheader("Geometria dielu")
     v_d = st.number_input("Priemer (d) [mm]", value=50.0, step=0.1, format="%.2f")
     v_l = st.number_input("Dĺžka (l) [mm]", value=100.0, step=0.1, format="%.2f")
-    
-    # Pomocný výpočet pre užívateľa
-    st.caption(f"Plocha prierezu: {(math.pi * (v_d**2) / 4):.2f} mm²")
-    st.caption(f"Plocha plášťa: {(math.pi * v_d * v_l):.2f} mm²")
 
 # --- 4. LOGIKA VÝPOČTU ---
 st.markdown("---")
@@ -87,70 +82,49 @@ if st.button("🚀 GENEROVAŤ PREDIKCIU ČASU", use_container_width=True):
         st.warning("Prosím, špecifikujte akosť materiálu.")
     else:
         try:
-            # A. SUPER-ČISTENIE VSTUPU
-            # Premeníme čiarky na bodky (kritické pre akosti ako 1.4301)
+            # SUPER-ČISTENIE VSTUPU
             v_ako_clean = v_ako_raw.replace(",", ".").strip().upper()
             
-            # B. PRÍPRAVA DÁT (Identicky s tréningom)
+            # PRÍPRAVA DÁT
             input_df = pd.DataFrame(0.0, index=[0], columns=model_columns)
-            
             input_df['d'] = float(v_d)
             input_df['l'] = float(v_l)
             input_df['pocet_kusov'] = np.log1p(float(v_ks))
             input_df['plocha_prierezu'] = (math.pi * (v_d**2)) / 4
             input_df['plocha_plasta'] = math.pi * v_d * v_l
             
-            # Aktivácia One-Hot stĺpcov
             target_cols = [f"material_{v_mat}", f"akost_{v_ako_clean}", f"narocnost_{v_nar}"]
             for col in target_cols:
                 if col in input_df.columns:
                     input_df[col] = 1.0
             
-            # C. VÝPOČET MODELOM
+            # VÝPOČET MODELOM
             pred_log = model.predict(input_df)[0]
             pred_min_1ks = np.expm1(pred_log)
             
-            # D. APLIKÁCIA POISTKY (Minimálna taxa 7 min)
+            # POISTKA 7 MIN
             MIN_CAS = 7.0
-            original_pred = pred_min_1ks # Odložíme si pre debug
-            
             if pred_min_1ks < MIN_CAS:
                 pred_min_1ks = MIN_CAS
-                poistka_aktivna = True
+                poistka_text = f" (Zarovnané na minimum {MIN_CAS} min)"
             else:
-                poistka_aktivna = False
+                poistka_text = ""
 
             pred_min_celkom = pred_min_1ks * v_ks
             
-            # E. ZOBRAZENIE VÝSLEDKOV
+            # ZOBRAZENIE
             r1, r2, r3 = st.columns(3)
-            
             with r1:
                 st.metric("Čas na 1 kus", f"{pred_min_1ks:.2f} min")
-                if poistka_aktivna:
-                    st.caption(f" (Zarovnané na minimum {MIN_CAS} min)")
-            
+                st.caption(poistka_text)
             with r2:
-                st.metric("Celkový čas zákazky", f"{pred_min_celkom:.2f} min")
+                st.metric("Celkový čas", f"{pred_min_celkom:.2f} min")
                 st.write(f"⏱️ **{pred_min_celkom/60:.2f} hod**")
-                
             with r3:
-                # Kontrola rozpoznania akosti
                 if f"akost_{v_ako_clean}" in model_columns:
-                    st.success("✅ Akosť rozpoznaná")
-                    st.caption("Model použil špecifické dáta pre túto akosť.")
+                    st.success("✅ Akosť OK")
                 else:
-                    st.error("⚠️ Akosť neznáma")
-                    st.caption("Použitý priemer materiálu. Skontrolujte preklepy (bodka/čiarka).")
-
-            # F. DEBUG SEKCIA
-            with st.expander("🔍 Technický detail predikcie"):
-                st.write(f"Spracovaná akosť: `{v_ako_clean}`")
-                st.write(f"Surová predikcia modelu (pred poistkou): {original_pred:.4f} min")
-                st.dataframe(input_df)
+                    st.error("⚠️ Neznáma akosť")
 
         except Exception as e:
-            st.error(f"Chyba počas výpočtu: {e}")
-
-st.markdown("---")
-st.caption("Mecasys AI v1.1 | Integrovaná ochrana vstupov a minimálna taxa.")
+            st.error(f"Chyba: {e}")
