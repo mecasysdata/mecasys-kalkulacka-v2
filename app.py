@@ -1,5 +1,6 @@
 import streamlit as st
 import pandas as pd
+from datetime import date
 
 st.title("Moja postupná aplikácia")
 
@@ -12,47 +13,56 @@ def load_data():
         df = pd.read_csv(SHEET_URL)
         return df
     except:
-        # Záložný prázdny DataFrame, ak by link nefungoval
         return pd.DataFrame(columns=['zakaznik', 'krajina', 'lojalita'])
 
 df = load_data()
 
-# Príprava zoznamu pre selectbox (existujúci + možnosť pridať nového)
+# --- SEKCIU VSTUPOV (ZÁKLADNÉ INFO) ---
+st.subheader("Základné informácie o ponuke")
+
+col_a, col_b = st.columns(2)
+
+with col_a:
+    # NOVÁ PREMENNÁ - datum (typ: date)
+    datum = st.date_input("Dátum vystavenia ponuky", value=date.today())
+    
+    # NOVÁ PREMENNÁ - ponuka (typ: string)
+    ponuka = st.text_input("Označenie cenovej ponuky (napr. CP-2024-001)")
+
+with col_b:
+    # NOVÁ PREMENNÁ - item (typ: string)
+    item = st.text_input("Označenie komponentu (Item)")
+
+st.divider()
+
+# --- SEKCIU VSTUPOV (ZÁKAZNÍK A MNOŽSTVO) ---
+st.subheader("Detaily zákazníka a výroby")
+
 moznosti_zakaznikov = ["--- Vyber zo zoznamu ---", "Nový zákazník (zadať manuálne)"] + sorted(df['zakaznik'].unique().tolist())
-
-# --- SEKCIU VSTUPOV ---
-
 vyber = st.selectbox("Vyberte zákazníka", moznosti_zakaznikov)
 
-# Logika pre existujúceho vs. nového zákazníka
 if vyber == "Nový zákazník (zadať manuálne)":
     zakaznik = st.text_input("Zadajte názov nového zákazníka")
     krajina = st.text_input("Zadajte krajinu zákazníka")
     lojalita = 0.5
-    st.info(f"Nový zákazník má automaticky nastavenú lojalitu na {lojalita}")
-
 elif vyber != "--- Vyber zo zoznamu ---":
-    # Načítanie dát z tabuľky
     data_zakaznika = df[df['zakaznik'] == vyber].iloc[0]
     zakaznik = vyber
     krajina = str(data_zakaznika['krajina'])
     lojalita = float(data_zakaznika['lojalita'])
 else:
-    # Ak ešte nič nevybral
-    zakaznik = ""
-    krajina = ""
-    lojalita = 0.0
+    zakaznik, krajina, lojalita = "", "", 0.0
 
-# 4. Počet kusov (vždy zobrazený)
 pocet_kusov = st.number_input("Počet kusov na výrobu", min_value=1, value=10, step=1)
 
-# --- ZOBRAZENIE VÝSLEDKOV ---
-if zakaznik:
-    st.divider()
-    col1, col2 = st.columns(2)
-    with col1:
-        st.write(f"**Zákazník:** {zakaznik}")
-        st.write(f"**Krajina:** {krajina}")
-    with col2:
-        st.write(f"**Lojalita:** {lojalita}")
-        st.write(f"**Plánovaná výroba:** {pocet_kusov} ks")
+# --- ZOBRAZENIE ZHRNUTIA ---
+if zakaznik and ponuka and item:
+    st.success("Všetky potrebné údaje sú vyplnené.")
+    st.write("### Súhrn ponuky:")
+    
+    info_col1, info_col2, info_col3 = st.columns(3)
+    info_col1.metric("Ponuka", ponuka)
+    info_col2.metric("Dátum", str(datum))
+    info_col3.metric("Item", item)
+    
+    st.write(f"**Zákazník:** {zakaznik} ({krajina}) | **Lojalita:** {lojalita} | **Množstvo:** {pocet_kusov} ks")
