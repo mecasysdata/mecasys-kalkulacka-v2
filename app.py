@@ -13,7 +13,7 @@ from fpdf import FPDF
 # --- 1. KONFIGURÁCIA A ZDROJE ---
 st.set_page_config(page_title="Mecasys AI PRO", layout="wide")
 
-# Link na tvoj Apps Script (Archív A-U)
+# Link na tvoj Apps Script (Archív stĺpce A-U)
 URL_APPS_SCRIPT = "https://script.google.com/macros/s/AKfycbxv1GNG0Yx7t0TiY4qj2rhK4RN3cEC4fwd1J5A8M33xKL3qgHf_WGPDzCbvrie9vXQu/exec"
 
 URLS = {
@@ -41,10 +41,8 @@ def load_csv(url):
 @st.cache_resource
 def load_models():
     p = 'MECASYS_APP'
-    # MODEL 1 - ČAS
     m1 = XGBRegressor(); m1.load_model(os.path.join(p, 'finalny_model.json'))
     with open(os.path.join(p, 'stlpce_modelu.pkl'), 'rb') as f: c1 = pickle.load(f)
-    # MODEL 2 - CENA
     m2 = XGBRegressor(); m2.load_model(os.path.join(p, 'xgb_model_cena.json'))
     with open(os.path.join(p, 'model_columns.pkl'), 'rb') as f: c2 = pickle.load(f)
     return m1, c1, m2, c2
@@ -52,7 +50,7 @@ def load_models():
 df_c, df_m, df_k, df_z = load_csv(URLS["cisnik"]), load_csv(URLS["mat_cena"]), load_csv(URLS["koop"]), load_csv(URLS["zakaznici"])
 model1, cols1, model2, cols2 = load_models()
 
-# --- 2. LOGICKÉ FUNKCIE (PDF, HUSTOTA) ---
+# --- 2. LOGICKÉ FUNKCIE ---
 class PDF(FPDF):
     def header(self):
         if os.path.exists("logo_mecasys.png"):
@@ -107,12 +105,12 @@ with st.container(border=True):
 # --- 4. VÝPOČETNÝ ENGINE ---
 if st.button("➕ PRIDAŤ POLOŽKU DO KOŠÍKA", use_container_width=True):
     try:
-        # Zákazník info
+        # Dáta zákazníka
         z_row = df_z[df_z['ZAKAZNIK'] == v_zakaznik]
         v_krajina = str(z_row['KRAJINA'].iloc[0]) if not z_row.empty else "SK"
         v_lojalita = float(z_row['LOJALITA'].iloc[0]) if not z_row.empty else 5.0
 
-        # Fyzika (Ošetrenie typov)
+        # Fyzika
         h_val = float(get_hustota(v_mat, v_ako, df_c))
         hmot_kg = float(h_val * (math.pi/4) * (v_d/1000)**2 * (v_l/1000))
         pl_prierez = float((math.pi * v_d**2) / 4)
@@ -125,28 +123,21 @@ if st.button("➕ PRIDAŤ POLOŽKU DO KOŠÍKA", use_container_width=True):
         j_cena_m = float(str(res_m.iloc[0]['J.CENA/M']).replace(',','.')) if not res_m.empty else 0.0
         n_mat = float((v_l/1000) * j_cena_m)
 
-        # MODEL 1 (Čas) - Pevné stĺpce a typy
+        # MODEL 1 (Čas)
         in1 = pd.DataFrame(0.0, index=[0], columns=cols1)
         in1.update({'d':v_d, 'l':v_l, 'plocha_prierezu':pl_prierez, 'plocha_plasta':pl_plast, 'pocet_kusov':np.log1p(float(v_ks))})
         for c in [f"MATERIAL_{v_mat}", f"AKOST_{v_ako}", f"NAROCNOST_{v_nar}"]:
             if c in in1.columns: in1[c] = 1.0
         cas_min = float(np.expm1(model1.predict(in1.astype('float64'))[0]))
 
-        # MODEL 2 (Cena) - Pevné stĺpce a typy
+        # MODEL 2 (Cena)
         vst_naklady = float(n_mat + v_n_koop_manual)
         in2 = pd.DataFrame(0.0, index=[0], columns=cols2)
-        in2.update({
-            'cas': cas_min, 
-            'hmotnost': hmot_kg, 
-            'vstupne_naklady': vst_naklady, 
-            'lojalita': v_lojalita, 
-            'pocet_kusov': np.log1p(float(v_ks)), 
-            'plocha_prierezu': pl_prierez
-        })
+        in2.update({'cas': cas_min, 'hmotnost': hmot_kg, 'vstupne_naklady': vst_naklady, 'lojalita': v_lojalita, 'pocet_kusov': np.log1p(float(v_ks)), 'plocha_prierezu': pl_prierez})
         if f"krajina_{v_krajina}" in in2.columns: in2[f"krajina_{v_krajina}"] = 1.0
         cena_ks = float(np.expm1(model2.predict(in2.astype('float64'))[0]))
 
-        # Uloženie položky (Mapovanie A-U pre Archív)
+        # Uloženie (A-U)
         st.session_state.items_cp.append({
             "datum": str(v_datum_cp), "cislo_cp": v_oznacenie_cp, "zakaznik": v_zakaznik, "krajina": v_krajina,
             "lojalita": v_lojalita, "item": v_item, "material": v_mat, "akost": v_ako, "d": v_d, "l": v_l,
@@ -156,55 +147,50 @@ if st.button("➕ PRIDAŤ POLOŽKU DO KOŠÍKA", use_container_width=True):
         })
         st.success(f"Položka '{v_item}' pridaná.")
         st.rerun()
-    except Exception as e: st.error(f"Chyba: {e}")
+    except Exception as e: st.error(f"Chyba pri výpočte: {e}")
 
-# --- 5. PREHĽAD KOŠÍKA A EXPORTY ---
+# --- 5. PREHĽAD A EXPORTY ---
 if st.session_state.items_cp:
     st.divider()
-    st.subheader(f"🛒 Košík ponuky: {v_oznacenie_cp}")
+    st.subheader(f"🛒 Aktuálna ponuka: {v_oznacenie_cp}")
     df_basket = pd.DataFrame(st.session_state.items_cp)
-    st.table(df_basket[["item", "akost", "d", "l", "ks", "jednotkova_cena", "cena_spolu"]])
+    st.table(df_basket[["item", "akost", "ks", "jednotkova_cena", "cena_spolu"]])
     
     celkom = df_basket["cena_spolu"].sum()
     st.metric("CELKOVÁ SUMA PONUKY (bez DPH)", f"{celkom:.2f} €")
     
-    col1, col2, col3 = st.columns(3)
+    c1, c2, c3 = st.columns(3)
     
-    with col1: # PDF GENERÁTOR
+    with c1: # PDF
         if st.button("📄 GENEROVAŤ PDF"):
             pdf = PDF()
             pdf.add_page()
             pdf.set_font("helvetica", size=10)
-            pdf.cell(100, 7, f"Zákazník: {v_zakaznik}", 0, 1)
-            pdf.cell(100, 7, f"Číslo CP: {v_oznacenie_cp}", 0, 1)
-            pdf.cell(100, 7, f"Dátum: {v_datum_cp}", 0, 1); pdf.ln(10)
-            
-            # Tabuľka
+            pdf.cell(100, 7, f"Zakaznik: {v_zakaznik}", 0, 1)
+            pdf.cell(100, 7, f"Cislo CP: {v_oznacenie_cp}", 0, 1)
+            pdf.cell(100, 7, f"Datum: {v_datum_cp}", 0, 1); pdf.ln(10)
             pdf.set_fill_color(230, 230, 230); pdf.set_font("helvetica", 'B', 10)
             pdf.cell(70, 10, "ITEM", 1, 0, 'C', True); pdf.cell(30, 10, "Qty", 1, 0, 'C', True)
             pdf.cell(40, 10, "Price/Item", 1, 0, 'C', True); pdf.cell(50, 10, "Total", 1, 1, 'C', True)
-            
             pdf.set_font("helvetica", size=10)
             for i in st.session_state.items_cp:
                 pdf.cell(70, 10, str(i['item']), 1)
                 pdf.cell(30, 10, str(i['ks']), 1, 0, 'C')
                 pdf.cell(40, 10, f"{i['jednotkova_cena']:.2f} EUR", 1, 0, 'R')
                 pdf.cell(50, 10, f"{i['cena_spolu']:.2f} EUR", 1, 1, 'R')
-            
             pdf.set_font("helvetica", 'B', 11); pdf.cell(140, 10, "TOTAL (w/o VAT):", 0, 0, 'R')
             pdf.cell(50, 10, f"{celkom:.2f} EUR", 0, 1, 'R')
-            
             st.download_button("⬇️ Stiahnuť PDF", data=pdf.output(dest='S').encode('latin-1'), file_name=f"CP_{v_oznacenie_cp}.pdf", mime="application/pdf")
 
-    with col2: # ARCHÍV
+    with c2: # ARCHÍV
         if st.button("💾 ULOŽIŤ DO ARCHÍVU"):
             try:
                 r = requests.post(URL_APPS_SCRIPT, json=st.session_state.items_cp)
                 if "Success" in r.text:
-                    st.success("Archivované!"); st.session_state.items_cp = []; st.rerun()
-                else: st.error(f"Chyba archívu: {r.text}")
-            except Exception as e: st.error(f"Spojenie zlyhalo: {e}")
+                    st.success("Archivované v Google Sheete!"); st.session_state.items_cp = []; st.rerun()
+                else: st.error(f"Chyba: {r.text}")
+            except Exception as e: st.error(f"Chyba spojenia: {e}")
 
-    with col3:
+    with c3: # RESET
         if st.button("🗑️ VYMAZAŤ KOŠÍK"):
             st.session_state.items_cp = []; st.rerun()
