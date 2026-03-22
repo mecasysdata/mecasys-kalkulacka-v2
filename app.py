@@ -4,15 +4,34 @@ import numpy as np
 import math
 import pickle
 import os
+import requests
+from io import StringIO
 from xgboost import XGBRegressor
 
-# --- KONFIGURÁCIA STRÁNKY ---
-st.set_page_config(page_title="Mecasys Kalkulačka v2", layout="wide")
+# --- 1. KONFIGURÁCIA STRÁNKY ---
+st.set_page_config(page_title="Mecasys AI Kalkulačka", layout="centered")
 
-# --- 1. NAČÍTANIE MODELU A MAPY STĹPCOV ---
+# Odkaz na tvoj CSV export zo Google Sheets
+SHEET_CSV_URL = "https://docs.google.com/spreadsheets/d/e/2PACX-1vRfPBZ4TCpQyiqybU0ADu3AMwHCi2qOKifQAOnnTWnorVNJ1SVxtN6zJzXthOxCVwtXWp__Bp_-nto0/pub?gid=1281008948&single=true&output=csv"
+
+# --- 2. FUNKCIE NA NAČÍTANIE DÁT ---
+@st.cache_data(ttl=600)  # Dáta sa obnovia každých 10 minút
+def load_sheet_data():
+    try:
+        response = requests.get(SHEET_CSV_URL)
+        response.encoding = 'utf-8'
+        df = pd.read_csv(StringIO(response.text))
+        # Očistenie textu (veľké písmená, odstránenie medzier)
+        for col in df.columns:
+            df[col] = df[col].astype(str).str.strip().str.upper()
+        return df
+    except Exception as e:
+        st.error(f"Chyba pri načítaní číselníka: {e}")
+        return pd.DataFrame(columns=['material', 'akost'])
+
 @st.cache_resource
-def load_assets():
-    # Cesty k súborom v tvojom priečinku
+def load_ai_model():
+    # Cesty k súborom v tvojom priečinku MECASYS_APP
     model_path = os.path.join('MECASYS_APP', 'finalny_model.json')
     columns_path = os.path.join('MECASYS_APP', 'stlpce_modelu.pkl')
     
@@ -22,80 +41,89 @@ def load_assets():
         model_columns = pickle.load(f)
     return model, model_columns
 
-try:
-    model, model_columns = load_assets()
-except Exception as e:
-    st.error(f"❌ CHYBA: Nepodarilo sa načítať model! ({e})")
-    st.stop()
+# Načítanie súborov
+df_ciselnik = load_sheet_data()
+model, model_columns = load_ai_model()
 
-# --- 2. TVORBA ROZHRANIA ---
-st.title("🏭 Mecasys - AI Kalkulačka Výroby")
-st.markdown("---")
+# --- 3. ROZHRANIE (FRONTEND) ---
+st.title("🏭 Mecasys AI - Kalkulátor času")
+st.write("Tento model predikuje čistý výrobný čas na základe historických dát.")
 
-col1, col2 = st.columns(2)
+with st.container():
+    st.subheader("Vstupné parametre")
+    c1, c2 = st.columns(2)
 
-with col1:
-    st.subheader("📦 Parametre dielu")
-    v_mat = st.selectbox("Materiál", ['OCEĽ', 'NEREZ', 'FAREBNÉ KOVY', 'PLAST'])
-    v_ako = st.text_input("Akosť (text)", value="1.0577").strip().upper()
-    v_nar = st.selectbox("Náročnosť (1-5)", ['1', '2', '3', '4', '5'])
-
-with col2:
-    st.subheader("📏 Geometria a množstvo")
-    v_d = st.number_input("Priemer (d) mm", value=50.0, step=0.1)
-    v_l = st.number_input("Dĺžka (l) mm", value=100.0, step=0.1)
-    v_ks = st.number_input("Počet kusov", value=1, min_value=1)
-
-# --- 3. JADRO PREDIKCIE (Prebraté z Colabu) ---
-if st.button("🚀 VYPOČÍTAŤ ČASY VÝROBY", use_container_width=True):
-    try:
-        # A. Príprava dát
-        p_prierez = (math.pi * v_d**2) / 4
-        p_plast = math.pi * v_d * v_l
-        log_ks = np.log1p(v_ks)
+    with c1:
+        # Výber materiálu
+        mat_options = sorted(df_ciselnik['material'].unique()) if not df_ciselnik.empty else ['OCEĽ', 'NEREZ', 'PLAST']
+        v_mat = st.selectbox("Materiál", mat_options)
         
-        # B. Vstupný riadok (presne podľa model_columns)
-        input_df = pd.DataFrame(0.0, index=[0], columns=model_columns)
+        # Dynamický výber akosti podľa materiálu
+        akosti_pre_mat = sorted(df_ciselnik[df_ciselnik['material'] == v_mat]['akost'].unique())
+        v_ako_vyber = st.selectbox("Akosť", ["-- RUČNE ZADAŤ / INÁ --"] + akosti_pre_mat)
         
-        # C. Numerické hodnoty
-        input_df['d'] = float(v_d)
-        input_df['l'] = float(v_l)
-        input_df['pocet_kusov'] = float(log_ks)
-        input_df['plocha_prierezu'] = float(p_prierez)
-        input_df['plocha_plasta'] = float(p_plast)
-        
-        # D. Príprava názvov stĺpcov pre kategórie
-        col_mat = f"material_{v_mat}"
-        col_ako = f"akost_{v_ako}"
-        col_nar = f"narocnost_{v_nar}"
-        
-        # E. Kontrola a nastavenie dummy premenných (ako v Colabe)
-        pozná_mat = col_mat in input_df.columns
-        pozná_ako = col_ako in input_df.columns
-        
-        if pozná_mat: input_df[col_mat] = 1.0
-        if pozná_ako: input_df[col_ako] = 1.0
-        if col_nar in input_df.columns: input_df[col_nar] = 1.0
-        
-        # F. Predikcia
-        pred_log = model.predict(input_df)[0]
-        pred_min_kus = np.expm1(pred_log)
-        pred_min_celkovo = pred_min_kus * v_ks
-        
-        # G. Zobrazenie výsledkov (Štýlovanie)
-        st.markdown("---")
-        color = "#2e7d32" if pozná_ako else "#f57c00"
-        
-        c1, c2 = st.columns(2)
-        c1.metric("Čas na 1 komponent", f"{pred_min_kus:.2f} min")
-        c2.metric("CELKOVÝ ČAS", f"{pred_min_celkovo:.2f} min", delta=f"{pred_min_celkovo/60:.2f} hod", delta_color="normal")
-
-        if not pozná_ako:
-            st.warning(f"⚠️ Akosť '{v_ako}' nebola v tréningu, model použil priemer pre materiál {v_mat}.")
+        if v_ako_vyber == "-- RUČNE ZADAŤ / INÁ --":
+            v_ako = st.text_input("Zadaj akosť ručne (napr. POM, 1.4301)").strip().upper()
+        else:
+            v_ako = v_ako_vyber
             
-        # Zobrazenie pre debug
-        with st.expander("🔍 Technický detail vstupu"):
-            st.dataframe(input_df)
+        v_nar = st.selectbox("Náročnosť (1-5)", ['1', '2', '3', '4', '5'], index=0)
 
-    except Exception as e:
-        st.error(f"❌ Chyba výpočtu: {e}")
+    with c2:
+        v_d = st.number_input("Priemer (d) [mm]", value=50.0, step=0.1)
+        v_l = st.number_input("Dĺžka (l) [mm]", value=100.0, step=0.1)
+        v_ks = st.number_input("Počet kusov", value=1, min_value=1, step=1)
+
+# --- 4. LOGIKA VÝPOČTU (COLAB CORE) ---
+if st.button("🚀 VYPOČÍTAŤ ČAS VÝROBY", use_container_width=True):
+    if not v_ako:
+        st.warning("Prosím, zadaj alebo vyber akosť.")
+    else:
+        try:
+            # A. Príprava riadku s nulami (One-Hot Encoding základ)
+            input_df = pd.DataFrame(0.0, index=[0], columns=model_columns)
+            
+            # B. Numerické vstupy a výpočty (identicky s modelom)
+            input_df['d'] = float(v_d)
+            input_df['l'] = float(v_l)
+            input_df['pocet_kusov'] = np.log1p(float(v_ks))  # Logaritmická transformácia kusov
+            input_df['plocha_prierezu'] = (math.pi * (v_d**2)) / 4
+            input_df['plocha_plasta'] = math.pi * v_d * v_l
+            
+            # C. Aktivácia kategoriálnych stĺpcov (ak existujú v modeli)
+            target_cols = [f"material_{v_mat}", f"akost_{v_ako}", f"narocnost_{v_nar}"]
+            for col in target_cols:
+                if col in input_df.columns:
+                    input_df[col] = 1.0
+            
+            # D. Predikcia (Výsledok je v logaritmoch minút)
+            pred_log = model.predict(input_df)[0]
+            
+            # E. Spätná transformácia na reálne minúty
+            pred_min_1ks = np.expm1(pred_log)
+            pred_min_celkom = pred_min_1ks * v_ks
+            
+            # F. Zobrazenie výsledkov
+            st.markdown("---")
+            res1, res2 = st.columns(2)
+            
+            with res1:
+                st.metric("Čas na 1 kus", f"{pred_min_1ks:.2f} min")
+                if f"akost_{v_ako}" not in model_columns:
+                    st.caption(f"⚠️ Akosť '{v_ako}' model nepozná. Použitý priemer pre {v_mat}.")
+            
+            with res2:
+                st.metric("Celkový čas zákazky", f"{pred_min_celkom:.2f} min")
+                st.write(f"⏱️ Približne **{pred_min_celkom/60:.2f} hod**")
+
+            # G. Technický detail pre kontrolu
+            with st.expander("🔍 Technické detaily výpočtu"):
+                st.write("Stĺpce odoslané do modelu (One-Hot):")
+                st.dataframe(input_df)
+
+        except Exception as e:
+            st.error(f"Chyba pri výpočte: {e}")
+
+# Päta aplikácie
+st.markdown("---")
+st.caption("Mecasys AI Model v1.0 | Trénované na historických dátach výroby.")
