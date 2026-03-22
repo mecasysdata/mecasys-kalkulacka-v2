@@ -1,6 +1,6 @@
 streamlit
-pandas
-xgboost
-scikit-learn
-gspread
-google-auth
+pandas==2.2.2
+numpy==2.0.2
+xgboost==3.2.0
+scikit-learn==1.6.1
+openpyxl==3.1.5
