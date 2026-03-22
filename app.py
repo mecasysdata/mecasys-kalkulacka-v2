@@ -125,6 +125,11 @@ if st.button("🚀 Vypočítať predikciu", use_container_width=True):
         st.error(f"Chyba pri výpočte: {e}")
 
 # --- LADENIE (DEBUG) ---
+st.markdown("---")
 with st.expander("🔍 Technický detail (Vstupy do modelu)"):
-    st.write("Tento riadok bol odoslaný do modelu XGBoost:")
-    st.dataframe(input_df)
+    # Skontrolujeme, či užívateľ už klikol na tlačidlo a vytvoril input_df
+    if 'input_df' in locals():
+        st.write("Tento riadok bol odoslaný do modelu XGBoost:")
+        st.dataframe(input_df)
+    else:
+        st.info("Zadajte údaje a kliknite na 'Vypočítať predikciu', aby ste videli technické vstupy.")
