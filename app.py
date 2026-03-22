@@ -5,11 +5,10 @@ import numpy as np
 import pickle
 import xgboost as xgb
 import os
-import requests
 from datetime import date
 
-# --- 1. NAČÍTANIE DÁT (Tvoja overená verzia) ---
-st.set_page_config(page_title="Kalkulačný systém", layout="wide")
+# --- 1. KONFIGURÁCIA A NAČÍTANIE DÁT (Tvoja V8) ---
+st.set_page_config(page_title="Kalkulačný systém V8", layout="wide")
 
 URL_BASE = "https://docs.google.com/spreadsheets/d/e/2PACX-1vRfPBZ4TCpQyiqybU0ADu3AMwHCi2qOKifQAOnnTWnorVNJ1SVxtN6zJzXthOxCVwtXWp__Bp_-nto0/pub?"
 SHEET_ZAKAZNICI = f"{URL_BASE}gid=324957857&single=true&output=csv"
@@ -25,7 +24,7 @@ def load_data(url):
         return df
     except: return pd.DataFrame()
 
-# Načítanie modelov (beží na pozadí)
+# Načítanie modelov
 @st.cache_resource
 def load_ai_models():
     assets = {"m1": None, "cols1": None, "m2": None, "cols2": None}
@@ -48,32 +47,24 @@ df_cennik = load_data(SHEET_CENNIK)
 df_koop_cennik = load_data(SHEET_KOOPERACIE)
 ai = load_ai_models()
 
-st.title("⚙️ Komplexný kalkulačný systém")
+st.title("⚙️ Komplexný kalkulačný systém V8")
 
-# --- 2. IDENTIFIKÁCIA A ZÁKAZNÍK (Tvoja verzia) ---
+# --- 2. IDENTIFIKÁCIA (Tvoja V8) ---
 col_id1, col_id2 = st.columns(2)
 with col_id1:
     datum = st.date_input("Dátum vystavenia", value=date.today())
     ponuka = st.text_input("Označenie ponuky", placeholder="CP-2026-XXX")
     item = st.text_input("Názov komponentu (Item)")
-
 with col_id2:
     list_z = ["--- Vyber ---", "Nový zákazník (manual)"]
-    if not df_zakaznici.empty:
-        list_z += sorted(df_zakaznici['zakaznik'].dropna().unique().tolist())
+    if not df_zakaznici.empty: list_z += sorted(df_zakaznici['zakaznik'].dropna().unique().tolist())
     vyber_z = st.selectbox("Zákazník", list_z)
-    zakaznik, krajina, lojalita = "", "", 0.0
-
-    if vyber_z == "Nový zákazník (manual)":
-        zakaznik = st.text_input("Meno nového zákazníka")
-        krajina = st.text_input("Krajina")
-        lojalita = 0.5
-    elif vyber_z != "--- Vyber ---":
+    zakaznik, krajina, lojalita = "", "", 0.5
+    if vyber_z != "--- Vyber ---" and vyber_z != "Nový zákazník (manual)":
         dz = df_zakaznici[df_zakaznici['zakaznik'] == vyber_z].iloc[0]
         zakaznik, krajina, lojalita = vyber_z, str(dz['krajina']), float(dz['lojalita'])
-        st.info(f"✅ Zákazník: {krajina} | Lojalita: {lojalita}")
 
-# --- 3. MATERIÁL A ROZMERY (Tvoja verzia) ---
+# --- 3. MATERIÁL A PARAMETRE (Tvoja V8) ---
 col_m1, col_m2 = st.columns(2)
 with col_m1:
     material = st.selectbox("Materiál", sorted(df_mat['material'].unique().tolist()) if not df_mat.empty else [])
@@ -81,7 +72,6 @@ with col_m1:
     akost = st.selectbox("Akosť", sorted(df_f['akost'].unique().tolist()) if not df_f.empty else [])
     d = st.number_input("Priemer d [mm]", min_value=0.1, value=20.0)
     l = st.number_input("Dĺžka l [mm]", min_value=0.1, value=50.0)
-
 with col_m2:
     hustota = 0.0
     if material == "NEREZ": hustota = 8000.0
@@ -92,23 +82,22 @@ with col_m2:
     elif material == "FAREBNÉ KOVY":
         ako_s = str(akost)
         hustota = 4500.0 if ako_s.startswith("3.7") else (2900.0 if ako_s.startswith("3.") else 9000.0)
-    st.metric("Hustota (kg/m³)", f"{hustota}")
+    st.metric("Hustota", f"{hustota}")
     pocet_kusov = st.number_input("Počet kusov [ks]", min_value=1, value=1)
     narocnost = st.select_slider("Náročnosť výroby", options=["1", "2", "3", "4", "5"], value="3")
 
-# Geometria
 plocha_prierezu = (math.pi * (d**2)) / 4
 plocha_plasta = math.pi * d * l
 hmotnost = hustota * (math.pi / 4) * (d / 1000)**2 * (l / 1000)
 
-# --- 4. EKONOMIKA (Tvoja verzia - opravená) ---
+# --- 4. EKONOMIKA (Tvoja V8) ---
 st.divider()
 cena_material = 0.0
 res_mat = df_cennik[(df_cennik['material'] == material) & (df_cennik['akost'] == akost) & (df_cennik['d'] >= d)]
 if not res_mat.empty:
     row_m = res_mat.sort_values('d').iloc[0]
     cena_material = (float(row_m['cena']) * l) / 1000
-    st.success(f"✅ Materiál OK: {cena_material:.4f} €/ks")
+    st.success(f"Materiál OK: {cena_material:.4f} €/ks")
 else:
     cena_material = st.number_input("Cena materiálu manuálne", 0.0)
 
@@ -119,7 +108,7 @@ if ma_koop == "Áno":
     if not df_k_f.empty:
         vybrany_druh = st.selectbox("Druh kooperácie", sorted(df_k_f['druh'].unique()))
         rk = df_k_f[df_k_f['druh'] == vybrany_druh].iloc[0]
-        # Tu používam presne tvoj názov stĺpca 'minimalna_zakazka'
+        # Striktné názvy stĺpcov z tvojej V8
         tarifa = float(rk['tarifa'])
         min_zak = float(rk['minimalna_zakazka'])
         jednotka = str(rk['jednotka']).strip().lower()
@@ -130,15 +119,15 @@ if ma_koop == "Áno":
 
 vstupne_naklady = cena_material + cena_kooperacia
 
-# --- 5. AI PREDIKCIA (Vložená časť) ---
+# --- 5. AI PREDIKCIA (Implementácia z V8) ---
 st.divider()
-st.subheader("🤖 AI Výpočet")
+st.subheader("🤖 AI Predikcia")
 pred_cas, pred_cena = 0.0, 0.0
 model_ok = False
 
 if ai["m1"] and ai["cols1"]:
     try:
-        # Príprava dát pre Model 1
+        # Model 1 (ČAS) - Logaritmizujeme vstup pocet_kusov
         r1 = {'d': d, 'l': l, 'pocet_kusov': np.log1p(pocet_kusov), 'plocha_prierezu': plocha_prierezu,
               'plocha_plasta': plocha_plasta, 'lojalita': lojalita, 'hustota': hustota, 'vstupne_naklady': vstupne_naklady}
         for c in ai["cols1"]:
@@ -147,27 +136,28 @@ if ai["m1"] and ai["cols1"]:
             if c == f"akost_{str(akost).upper()}": r1[c] = 1
             if c == f"narocnost_{narocnost}": r1[c] = 1
         
-        # Predikcia Času
         pred_cas = float(np.expm1(ai["m1"].predict(xgb.DMatrix(pd.DataFrame([r1])[ai["cols1"]]))[0]))
 
-        # Predikcia Ceny
+        # Model 2 (CENA) - Vstupuje reálny pred_cas
         if ai["m2"] and ai["cols2"] and pred_cas > 0:
             r2 = {'cas': pred_cas, 'hmotnost': hmotnost, 'lojalita': lojalita, 'hustota': hustota, 'plocha_prierezu': plocha_prierezu}
             for c in ai["cols2"]:
                 if c not in r2: r2[c] = 0
                 if c == f"krajina_{str(krajina).upper()}": r2[c] = 1
+            
             pred_cena = float(np.expm1(ai["m2"].predict(xgb.DMatrix(pd.DataFrame([r2])[ai["cols2"]]))[0]))
             if pred_cena > 0.01: model_ok = True
     except: pass
 
 if model_ok:
     st.success(f"AI: {pred_cas:.2f} min | {pred_cena:.2f} €/ks")
-    final_cena = st.number_input("Konečná cena [€]", value=float(round(pred_cena, 2)))
+    final_cena = st.number_input("Upraviť cenu [€]", value=float(round(pred_cena, 2)))
 else:
     st.error("⚠️ Model predikuje chybu")
-    final_cena = st.number_input("Zadaj cenu manuálne [€]", 0.0)
+    final_cena = st.number_input("Manuálna cena [€]", 0.0)
 
-# --- 6. TABUĽKA (Tvoja požiadavka) ---
+# --- 6. TABUĽKA PREHĽADU (Tvoja V8) ---
+st.divider()
 st.table(pd.DataFrame({
     "Premenná": ["Materiál", "Hustota", "Hmotnosť [kg]", "Vstupné náklady [€/ks]", "AI Čas [min]", "AI Cena [€/ks]"],
     "Hodnota": [material, hustota, round(hmotnost, 4), round(vstupne_naklady, 4), round(pred_cas, 2), round(final_cena, 2)]
