@@ -8,7 +8,7 @@ import os
 from datetime import date
 
 # --- 1. KONFIGURÁCIA A NAČÍTANIE DÁT ---
-st.set_page_config(page_title="MECASYS Kompletný Kalkulátor", layout="wide")
+st.set_page_config(page_title="MECASYS AI Kalkulátor", layout="wide")
 
 URL_BASE = "https://docs.google.com/spreadsheets/d/e/2PACX-1vRfPBZ4TCpQyiqybU0ADu3AMwHCi2qOKifQAOnnTWnorVNJ1SVxtN6zJzXthOxCVwtXWp__Bp_-nto0/pub?"
 SHEET_ZAKAZNICI = f"{URL_BASE}gid=324957857&single=true&output=csv"
@@ -27,6 +27,7 @@ def load_data(url):
 
 @st.cache_resource
 def load_ai_assets():
+    # Hľadá model v koreni alebo v priečinku MECASYS_APP
     paths = ['', 'MECASYS_APP/']
     for p in paths:
         m_path, c_path = f"{p}finalny_model.json", f"{p}stlpce_modelu.pkl"
@@ -43,45 +44,56 @@ def load_ai_assets():
 def clean_number(val):
     if pd.isna(val): return 0.0
     try:
+        # Odstráni čiarky (tisíce) a spracuje formát 1,200.000 -> 1200.0
         s = str(val).replace(',', '').strip()
         return float(s)
     except:
         return 0.0
 
+# Načítanie databáz
 df_zakaznici = load_data(SHEET_ZAKAZNICI)
 df_mat = load_data(SHEET_MATERIALY)
 df_cennik = load_data(SHEET_CENNIK)
 df_koop_cennik = load_data(SHEET_KOOPERACIE)
 model_ai, expected_columns = load_ai_assets()
 
-st.title("⚙️ Komplexný kalkulačný systém (Full Data)")
+st.title("⚙️ Komplexný AI kalkulačný systém")
 
-# --- 2. VSTUPY: IDENTIFIKÁCIA ---
+# --- 2. IDENTIFIKÁCIA A ZÁKAZNÍK ---
 st.subheader("1. Identifikácia a Zákazník")
 col_id1, col_id2 = st.columns(2)
+
 with col_id1:
     datum = st.date_input("Dátum vystavenia", value=date.today())
     ponuka = st.text_input("Označenie ponuky", placeholder="CP-2026-XXX")
     item = st.text_input("Názov komponentu (Item)")
+
 with col_id2:
     list_z = ["--- Vyber ---", "Nový zákazník (manual)"]
     if not df_zakaznici.empty:
         list_z += sorted(df_zakaznici['zakaznik'].dropna().unique().tolist())
-    vyber_z = st.selectbox("Zákazník", list_z)
     
+    vyber_z = st.selectbox("Zákazník", list_z)
     zakaznik, krajina, lojalita = "", "", 0.0
+
     if vyber_z == "Nový zákazník (manual)":
         zakaznik = st.text_input("Meno nového zákazníka")
-        krajina = st.text_input("Krajina (manual)")
+        krajina = st.text_input("Krajina")
         lojalita = 0.5
+        st.warning(f"⚠️ Automatická lojalita: {lojalita}")
     elif vyber_z != "--- Vyber ---":
         dz = df_zakaznici[df_zakaznici['zakaznik'] == vyber_z].iloc[0]
-        zakaznik, krajina, lojalita = vyber_z, str(dz['krajina']), float(dz['lojalita'])
+        zakaznik = vyber_z
+        krajina = str(dz['krajina'])
+        lojalita = float(dz['lojalita'])
+        st.info(f"✅ Zákazník: {krajina} | Lojalita: {lojalita}")
 
-# --- 3. VSTUPY: MATERIÁL ---
 st.divider()
+
+# --- 3. MATERIÁL A HUSTOTA ---
 st.subheader("2. Materiálové parametre")
 col_m1, col_m2 = st.columns(2)
+
 with col_m1:
     list_mat = sorted(df_mat['material'].unique().tolist()) if not df_mat.empty else []
     material = st.selectbox("Materiál", list_mat)
@@ -90,113 +102,126 @@ with col_m1:
     vyber_ako = st.selectbox("Akosť", list_ako)
 
 hustota, akost = 0.0, ""
+
 with col_m2:
     if vyber_ako == "Iná akosť (manual)":
         akost = st.text_input("Zadaj názov novej akosti")
-        hustota = st.number_input("Zadaj hustotu [kg/m³]!", min_value=0.0)
+        hustota = st.number_input("Zadaj hustotu [kg/m³]", min_value=0.0)
     else:
         akost = vyber_ako
         if material == "NEREZ": hustota = 8000.0
         elif material == "OCEĽ": hustota = 7900.0
         elif material == "PLAST":
-            try:
-                raw_h = df_f[df_f['akost'] == akost]['hustota'].iloc[0]
-                hustota = clean_number(raw_h)
-            except: hustota = 0.0
+            raw_h = df_f[df_f['akost'] == akost]['hustota'].iloc[0]
+            hustota = clean_number(raw_h)
         elif material == "FAREBNÉ KOVY":
             ako_s = str(akost)
             hustota = 4500.0 if ako_s.startswith("3.7") else (2900.0 if ako_s.startswith("3.") else 9000.0)
-    st.metric("Hustota", f"{hustota} kg/m³")
+        
+        st.metric("Hustota (kg/m³)", f"{hustota}")
 
-# --- 4. VSTUPY: TECHNICKÉ ---
 st.divider()
+
+# --- 4. ROZMERY A GEOMETRIA ---
 st.subheader("3. Technické parametre")
 col_p1, col_p2 = st.columns(2)
+
 with col_p1:
     d = st.number_input("Priemer d [mm]", min_value=0.0, format="%.2f")
     l = st.number_input("Dĺžka l [mm]", min_value=0.0, format="%.2f")
+
 with col_p2:
     pocet_kusov = st.number_input("Počet kusov [ks]", min_value=1, value=1)
     narocnost = st.select_slider("Náročnosť výroby", options=["1", "2", "3", "4", "5"], value="3")
 
-# Výpočty geometrie
+# Výpočty
 plocha_prierezu = (math.pi * (d**2)) / 4
 plocha_plasta = math.pi * d * l
 hmotnost = hustota * (math.pi / 4) * (d / 1000)**2 * (l / 1000)
 
-# --- 5. EKONOMIKA ---
 st.divider()
-st.subheader("4. Ekonomické výpočty")
-cena_material, cena_kooperacia, vybrany_druh_koop = 0.0, 0.0, "Žiadna"
 
+# --- 5. EKONOMIKA ---
+st.subheader("4. Ekonomika")
+
+# 5.1 CENA MATERIÁLU
+cena_material = 0.0
 res_mat = df_cennik[(df_cennik['material'] == material) & (df_cennik['akost'] == akost) & (df_cennik['d'] >= d)]
+
 if not res_mat.empty:
     row_m = res_mat.sort_values('d').iloc[0]
     cena_material = (clean_number(row_m['cena']) * l) / 1000
+    st.success(f"✅ Materiál nájdený: {cena_material:.4f} €/ks")
 else:
-    cena_material = st.number_input("Manuálna cena materiálu [€/ks]", min_value=0.0)
+    cena_material = st.number_input("Zadaj cenu materiálu manuálne [€/ks]", min_value=0.0)
 
-ma_koop = st.radio("Vyžaduje diel kooperáciu?", ["Nie", "Áno"], horizontal=True)
+# 5.2 CENA KOOPERÁCIE (Odolná verzia)
+ma_koop = st.radio("Kooperácia?", ["Nie", "Áno"], horizontal=True)
+cena_kooperacia, vybrany_druh_koop = 0.0, "Žiadna"
+
 if ma_koop == "Áno":
     df_k_f = df_koop_cennik[df_koop_cennik['material'] == material]
     list_k = sorted(df_k_f['druh'].unique().tolist()) if not df_k_f.empty else []
+    
     if list_k:
         vybrany_druh_koop = st.selectbox("Druh kooperácie", list_k)
         rk = df_k_f[df_k_f['druh'] == vybrany_druh_koop].iloc[0]
-        t, m_z = clean_number(rk['tarifa']), clean_number(rk['minimalna_zakazka'])
-        jednotka = str(rk['jednotka']).lower()
-        odhad = (t * hmotnost) if jednotka == 'kg' else (t * plocha_plasta / 10000)
-        cena_kooperacia = max(odhad, m_z / pocet_kusov)
+        
+        # Flexibilné načítanie stĺpcov
+        tarifa = clean_number(rk[[c for c in rk.index if 'tarifa' in c.lower()][0]])
+        min_zak = clean_number(rk[[c for c in rk.index if 'min' in c.lower() and 'zak' in c.lower()][0]])
+        jednotka_koop = str(rk[[c for c in rk.index if 'jednotka' in c.lower()][0]]).lower().strip()
+        
+        odhad = (tarifa * hmotnost) if 'kg' in jednotka_koop else (tarifa * plocha_plasta / 10000)
+        cena_kooperacia = max(odhad, min_zak / pocet_kusov)
+    else:
+        cena_kooperacia = st.number_input("Cena kooperácie manuálne [€/ks]", min_value=0.0)
+        vybrany_druh_koop = "Manuálne"
 
 vstupne_naklady = cena_material + cena_kooperacia
 
-# --- 6. AI PREDIKCIA ---
+# --- 6. AI PREDIKCIA (VÝHRADNE NA ZÁKLADE MODELU) ---
 predikovany_cas_min = 0.0
 if model_ai and expected_columns and d > 0 and l > 0:
-    row_dict = {
+    st.divider()
+    st.subheader("🤖 AI Výpočet strojného času")
+    
+    # Príprava vstupného riadku (musí sedieť s tréningom)
+    input_row = {
         'd': d, 'l': l, 'pocet_kusov': np.log1p(pocet_kusov),
         'plocha_prierezu': plocha_prierezu, 'plocha_plasta': plocha_plasta,
         'lojalita': lojalita, 'hustota': hustota, 'vstupne_naklady': vstupne_naklady
     }
+    # Doplnenie chýbajúcich stĺpcov (kategorické premenné)
     for col in expected_columns:
-        if col not in row_dict: row_dict[col] = 0
+        if col not in input_row: input_row[col] = 0
+    # One-hot encoding pre zvolené hodnoty
     for c, v in [("material", material), ("akost", akost), ("narocnost", narocnost)]:
-        k = f"{c}_{str(v).upper()}"
-        if k in expected_columns: row_dict[k] = 1
+        key = f"{c}_{str(v).upper()}"
+        if key in expected_columns: input_row[key] = 1
     
-    input_df = pd.DataFrame([row_dict])[expected_columns]
-    log_pred = model_ai.predict(xgb.DMatrix(input_df))[0]
-    predikovany_cas_min = float(np.expm1(log_pred))
+    # Samotná predikcia
+    dmatrix = xgb.DMatrix(pd.DataFrame([input_row])[expected_columns])
+    predikovany_cas_min = float(np.expm1(model_ai.predict(dmatrix)[0]))
+    
+    st.metric("AI Predikovaný čas", f"{predikovany_cas_min:.2f} min/ks")
 
-# --- 7. FINÁLNA TABUĽKA VŠETKÝCH PREMENNÝCH ---
+# --- 7. FINÁLNY PREHĽAD ---
 st.divider()
-st.subheader("📋 Kompletný výpis premenných")
+st.subheader("📋 Kompletný prehľad")
 
-full_data = {
-    "Názov premennej": [
-        "Dátum kalkulácie", "Označenie ponuky", "Položka (Item)", 
-        "Zákazník", "Krajina", "Lojalita (X_lojalita)", 
-        "Skupina materiálu", "Akosť materiálu", "Hustota [kg/m³]", 
-        "Priemer d [mm]", "Dĺžka l [mm]", "Počet kusov [ks]", 
-        "Stupeň náročnosti (1-5)", "Plocha prierezu [mm²]", "Plocha plášťa [mm²]", 
-        "Čistá hmotnosť [kg/ks]", "Cena materiálu [€/ks]", "Druh kooperácie", 
-        "Cena kooperácie [€/ks]", "Celkové vstupné náklady [€/ks]", 
-        "AI Predikovaný čas M1 [min/ks]"
+final_summary = {
+    "Premenná": [
+        "Ponuka", "Item", "Zákazník", "Lojalita", "Hustota [kg/m³]", 
+        "Priemer d [mm]", "Dĺžka l [mm]", "Hmotnosť [kg]", 
+        "Cena materiálu [€/ks]", "Druh kooperácie", "VSTUPNÉ NÁKLADY [€/ks]",
+        "AI STROJNÝ ČAS [min/ks]"
     ],
-    "Aktuálna hodnota": [
-        datum, ponuka, item, 
-        zakaznik, krajina, lojalita, 
-        material, akost, hustota, 
-        d, l, pocet_kusov, 
-        narocnost, round(plocha_prierezu, 2), round(plocha_plasta, 2), 
-        round(hmotnost, 4), round(cena_material, 4), vybrany_druh_koop, 
-        round(cena_kooperacia, 4), round(vstupne_naklady, 4), 
+    "Hodnota": [
+        ponuka, item, zakaznik, lojalita, hustota, 
+        d, l, round(hmotnost, 4), 
+        round(cena_material, 4), vybrany_druh_koop, round(vstupne_naklady, 4),
         round(predikovany_cas_min, 2)
     ]
 }
-
-st.table(pd.DataFrame(full_data))
-
-# --- NEXT STEP ---
-if predikovany_cas_min > 0:
-    st.success(f"Výpočet dokončený. AI čas M1: {predikovany_cas_min:.2f} min/ks")
+st.table(pd.DataFrame(final_summary))
