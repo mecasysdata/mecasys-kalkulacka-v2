@@ -3,12 +3,12 @@ import pandas as pd
 import math
 import numpy as np
 import pickle
-import xgb as xgb
+import xgboost as xgb  # Opravený import
 import os
 from datetime import date
 
 # --- 1. KONFIGURÁCIA A NAČÍTANIE DÁT ---
-st.set_page_config(page_title="MECASYS AI Kalkulátor V5.2", layout="wide")
+st.set_page_config(page_title="MECASYS AI Kalkulátor V5.3", layout="wide")
 
 URL_BASE = "https://docs.google.com/spreadsheets/d/e/2PACX-1vRfPBZ4TCpQyiqybU0ADu3AMwHCi2qOKifQAOnnTWnorVNJ1SVxtN6zJzXthOxCVwtXWp__Bp_-nto0/pub?"
 SHEET_ZAKAZNICI = f"{URL_BASE}gid=324957857&single=true&output=csv"
@@ -35,13 +35,12 @@ def load_data(url):
 
 @st.cache_resource
 def load_ai_assets():
-    import xgboost as xgb_lib
     paths = ['', 'MECASYS_APP/']
     for p in paths:
         m_path, c_path = f"{p}finalny_model.json", f"{p}stlpce_modelu.pkl"
         if os.path.exists(m_path) and os.path.exists(c_path):
             try:
-                bst = xgb_lib.Booster()
+                bst = xgb.Booster()
                 bst.load_model(m_path)
                 with open(c_path, 'rb') as f:
                     cols = pickle.load(f)
@@ -162,7 +161,6 @@ vstupne_naklady = cena_material + cena_kooperacia
 # --- 6. AI PREDIKCIA (MODEL 1) ---
 predikovany_cas_min = 0.0
 if model_ai and expected_columns and d > 0 and l > 0:
-    import xgboost as xgb_lib
     input_row = {
         'd': d, 'l': l, 'pocet_kusov': np.log1p(pocet_kusov),
         'plocha_prierezu': plocha_prierezu, 'plocha_plasta': plocha_plasta,
@@ -173,7 +171,7 @@ if model_ai and expected_columns and d > 0 and l > 0:
     for c, v in [("material", material), ("akost", akost), ("narocnost", narocnost)]:
         key = f"{c}_{str(v).upper()}"
         if key in expected_columns: input_row[key] = 1
-    dmatrix = xgb_lib.DMatrix(pd.DataFrame([input_row])[expected_columns])
+    dmatrix = xgb.DMatrix(pd.DataFrame([input_row])[expected_columns])
     predikovany_cas_min = float(np.expm1(model_ai.predict(dmatrix)[0]))
 
 # --- 7. FINÁLNY PREHĽAD (VŠETKY PREMENNÉ) ---
