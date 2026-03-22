@@ -1,125 +1,101 @@
 import streamlit as st
 import pandas as pd
 import numpy as np
-import xgboost as xgb
+import math
 import pickle
 import os
+from xgboost import XGBRegressor
 
-# --- KONFIGURÁCIA ---
+# --- KONFIGURÁCIA STRÁNKY ---
 st.set_page_config(page_title="Mecasys Kalkulačka v2", layout="wide")
 
-# URL na číselník z Google Sheets (Materiál, Akosť, Hustota)
-URL_HUST = "https://docs.google.com/spreadsheets/d/e/2PACX-1vRfPBZ4TCpQyiqybU0ADu3AMwHCi2qOKifQAOnnTWnorVNJ1SVxtN6zJzXthOxCVwtXWp__Bp_-nto0/pub?gid=1281008948&single=true&output=csv"
-
+# --- 1. NAČÍTANIE MODELU A MAPY STĹPCOV ---
 @st.cache_resource
-def load_model_assets():
-    """Načíta model a zoznam stĺpcov z priečinka MECASYS_APP"""
+def load_assets():
+    # Cesty k súborom v tvojom priečinku
     model_path = os.path.join('MECASYS_APP', 'finalny_model.json')
     columns_path = os.path.join('MECASYS_APP', 'stlpce_modelu.pkl')
     
-    if not os.path.exists(model_path) or not os.path.exists(columns_path):
-        st.error(f"Chýbajú súbory v MECASYS_APP! Hľadám: {model_path} a {columns_path}")
-        st.stop()
-
-    model = xgb.XGBRegressor()
+    model = XGBRegressor()
     model.load_model(model_path)
-    
     with open(columns_path, 'rb') as f:
         model_columns = pickle.load(f)
     return model, model_columns
 
-@st.cache_data
-def load_catalog():
-    """Načíta dáta z Google Sheets a vyčistí ich pre párovanie"""
-    try:
-        df = pd.read_csv(URL_HUST)
-        for col in ['material', 'akost']:
-            if col in df.columns:
-                df[col] = df[col].astype(str).str.strip().str.upper()
-        return df
-    except Exception as e:
-        st.error(f"Chyba pri načítaní číselníka: {e}")
-        return pd.DataFrame()
+try:
+    model, model_columns = load_assets()
+except Exception as e:
+    st.error(f"❌ CHYBA: Nepodarilo sa načítať model! ({e})")
+    st.stop()
 
-# Inicializácia aplikácie
-model, model_columns = load_model_assets()
-df_ciselnik = load_catalog()
-
-# --- POUŽÍVATEĽSKÉ ROZHRANIE ---
-st.title("🏭 Mecasys - Výrobná kalkulačka")
+# --- 2. TVORBA ROZHRANIA ---
+st.title("🏭 Mecasys - AI Kalkulačka Výroby")
 st.markdown("---")
 
-col1, col2, col3 = st.columns(3)
+col1, col2 = st.columns(2)
 
 with col1:
-    st.subheader("📏 Geometria")
-    d = st.number_input("Priemer (d) [mm]", min_value=0.0, value=10.0, step=0.1)
-    l = st.number_input("Dĺžka (l) [mm]", min_value=0.0, value=50.0, step=0.1)
-    pocet_kusov = st.number_input("Počet kusov [ks]", min_value=1, value=1, step=1)
+    st.subheader("📦 Parametre dielu")
+    v_mat = st.selectbox("Materiál", ['OCEĽ', 'NEREZ', 'FAREBNÉ KOVY', 'PLAST'])
+    v_ako = st.text_input("Akosť (text)", value="1.0577").strip().upper()
+    v_nar = st.selectbox("Náročnosť (1-5)", ['1', '2', '3', '4', '5'])
 
 with col2:
-    st.subheader("🧪 Materiál")
-    if not df_ciselnik.empty:
-        kat_list = sorted(df_ciselnik['material'].unique())
-        vybrany_mat = st.selectbox("Kategória materiálu", kat_list)
-        
-        akost_list = sorted(df_ciselnik[df_ciselnik['material'] == vybrany_mat]['akost'].unique())
-        vybrana_akost = st.selectbox("Konkrétna akosť", akost_list)
-        
-        # Zobrazenie hustoty pre info
-        hustota = df_ciselnik[(df_ciselnik['material'] == vybrany_mat) & 
-                             (df_ciselnik['akost'] == vybrana_akost)]['hustota'].values[0]
-        st.caption(f"Hustota: {hustota} kg/dm³")
-    else:
-        st.warning("Číselník nie je dostupný.")
+    st.subheader("📏 Geometria a množstvo")
+    v_d = st.number_input("Priemer (d) mm", value=50.0, step=0.1)
+    v_l = st.number_input("Dĺžka (l) mm", value=100.0, step=0.1)
+    v_ks = st.number_input("Počet kusov", value=1, min_value=1)
 
-with col3:
-    st.subheader("⚙️ Výroba")
-    # Narocnost je kategoricka premenna (1-5)
-    narocnost = st.selectbox("Náročnosť (1-5)", [1, 2, 3, 4, 5])
-
-# --- VÝPOČET A PREDIKCIA ---
-st.markdown("---")
-
-if st.button("🚀 Vypočítať predikciu času", use_container_width=True):
-    # 1. Príprava vstupného riadku s nulami v presnom poradí podľa .pkl
-    input_df = pd.DataFrame(0.0, index=[0], columns=model_columns)
-    
-    # 2. Numerické vstupy (Priradenie podľa názvu stĺpca)
-    input_df['d'] = float(d)
-    input_df['l'] = float(l)
-    input_df['pocet_kusov'] = np.log1p(float(pocet_kusov))
-    input_df['plocha_prierezu'] = (np.pi * (float(d)**2)) / 4
-    input_df['plocha_plasta'] = np.pi * float(d) * float(l)
-    
-    # 3. Kategorické vstupy (Dummy encoding / One-Hot)
-    # Tato funkcia zapne '1' v stĺpci, ktorý zodpovedá vybranej kategórii
-    def set_dummy(prefix, value):
-        col_name = f"{prefix}_{value}"
-        if col_name in input_df.columns:
-            input_df[col_name] = 1.0
-
-    set_dummy('material', vybrany_mat)
-    set_dummy('akost', vybrana_akost)
-    set_dummy('narocnost', narocnost)
-
-    # 4. Samotná predikcia
+# --- 3. JADRO PREDIKCIE (Prebraté z Colabu) ---
+if st.button("🚀 VYPOČÍTAŤ ČASY VÝROBY", use_container_width=True):
     try:
-        # Model vráti logaritmus času
-        pred_log = model.predict(input_df)
-        # Transformácia späť na reálne minúty
-        vysledok_min = np.expm1(pred_log)[0]
+        # A. Príprava dát
+        p_prierez = (math.pi * v_d**2) / 4
+        p_plast = math.pi * v_d * v_l
+        log_ks = np.log1p(v_ks)
         
-        # Zobrazenie výsledkov
-        res_col1, res_col2 = st.columns(2)
-        res_col1.metric("Odhadovaný čas (1 ks)", f"{vysledok_min:.2f} min")
-        res_col2.metric("Celkový čas zákazky", f"{(vysledok_min * pocet_kusov / 60):.2f} hod")
+        # B. Vstupný riadok (presne podľa model_columns)
+        input_df = pd.DataFrame(0.0, index=[0], columns=model_columns)
         
-    except Exception as e:
-        st.error(f"Chyba pri výpočte: {e}")
+        # C. Numerické hodnoty
+        input_df['d'] = float(v_d)
+        input_df['l'] = float(v_l)
+        input_df['pocet_kusov'] = float(log_ks)
+        input_df['plocha_prierezu'] = float(p_prierez)
+        input_df['plocha_plasta'] = float(p_plast)
+        
+        # D. Príprava názvov stĺpcov pre kategórie
+        col_mat = f"material_{v_mat}"
+        col_ako = f"akost_{v_ako}"
+        col_nar = f"narocnost_{v_nar}"
+        
+        # E. Kontrola a nastavenie dummy premenných (ako v Colabe)
+        pozná_mat = col_mat in input_df.columns
+        pozná_ako = col_ako in input_df.columns
+        
+        if pozná_mat: input_df[col_mat] = 1.0
+        if pozná_ako: input_df[col_ako] = 1.0
+        if col_nar in input_df.columns: input_df[col_nar] = 1.0
+        
+        # F. Predikcia
+        pred_log = model.predict(input_df)[0]
+        pred_min_kus = np.expm1(pred_log)
+        pred_min_celkovo = pred_min_kus * v_ks
+        
+        # G. Zobrazenie výsledkov (Štýlovanie)
+        st.markdown("---")
+        color = "#2e7d32" if pozná_ako else "#f57c00"
+        
+        c1, c2 = st.columns(2)
+        c1.metric("Čas na 1 komponent", f"{pred_min_kus:.2f} min")
+        c2.metric("CELKOVÝ ČAS", f"{pred_min_celkovo:.2f} min", delta=f"{pred_min_celkovo/60:.2f} hod", delta_color="normal")
 
-# --- TECHNICKÝ DETAIL (Zobrazí sa až po kliknutí na tlačidlo) ---
-if 'input_df' in locals():
-    with st.expander("🔍 Technický detail (Vstupy do modelu)"):
-        st.write("Dáta odoslané do modelu (overte, či sú v správnych stĺpcoch jednotky):")
-        st.dataframe(input_df)
+        if not pozná_ako:
+            st.warning(f"⚠️ Akosť '{v_ako}' nebola v tréningu, model použil priemer pre materiál {v_mat}.")
+            
+        # Zobrazenie pre debug
+        with st.expander("🔍 Technický detail vstupu"):
+            st.dataframe(input_df)
+
+    except Exception as e:
+        st.error(f"❌ Chyba výpočtu: {e}")
