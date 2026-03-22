@@ -21,7 +21,6 @@ def load_sheet_data():
         response = requests.get(SHEET_CSV_URL)
         response.encoding = 'utf-8'
         df = pd.read_csv(StringIO(response.text))
-        # OPRAVENÉ: Pridané .str pred .upper()
         for col in df.columns:
             df[col] = df[col].astype(str).str.strip().str.upper()
         return df
@@ -31,6 +30,7 @@ def load_sheet_data():
 
 @st.cache_resource
 def load_ai_model():
+    # Cesty k súborom v priečinku MECASYS_APP
     model_path = os.path.join('MECASYS_APP', 'finalny_model.json')
     columns_path = os.path.join('MECASYS_APP', 'stlpce_modelu.pkl')
     
@@ -40,91 +40,106 @@ def load_ai_model():
         model_columns = pickle.load(f)
     return model, model_columns
 
-# Načítanie súborov
+# Načítanie dát a modelu
 df_ciselnik = load_sheet_data()
 model, model_columns = load_ai_model()
 
 # --- 3. ROZHRANIE (FRONTEND) ---
-st.title("🏭 Mecasys AI - Profesionálny Kalkulátor")
+st.title("🏭 Mecasys AI - Kalkulátor Času")
+st.write("Predikcia na základe strojového učenia (historické dáta výroby).")
 st.markdown("---")
-
-with st.sidebar:
-    st.header("Nastavenia")
-    v_ks = st.number_input("Počet kusov v zákazke", value=1, min_value=1, step=1)
 
 c1, c2 = st.columns(2)
 
 with c1:
-    st.subheader("Materiálové parametre")
+    st.subheader("Materiál a Náročnosť")
     mat_options = sorted(df_ciselnik['material'].unique()) if not df_ciselnik.empty else ['OCEĽ', 'NEREZ', 'PLAST']
-    v_mat = st.selectbox("Hlavný materiál", mat_options)
+    v_mat = st.selectbox("Materiál", mat_options)
     
     akosti_pre_mat = sorted(df_ciselnik[df_ciselnik['material'] == v_mat]['akost'].unique())
-    v_ako_vyber = st.selectbox("Akosť (zo zoznamu)", ["-- RUČNE ZADAŤ --"] + akosti_pre_mat)
+    v_ako_vyber = st.selectbox("Akosť", ["-- RUČNE ZADAŤ --"] + akosti_pre_mat)
     
     if v_ako_vyber == "-- RUČNE ZADAŤ --":
-        v_ako_raw = st.text_input("Zadaj akosť ručne (napr. 1,4301 alebo POM)")
+        v_ako_raw = st.text_input("Zadaj akosť (napr. 1.4301, 11 375, POM)")
     else:
         v_ako_raw = v_ako_vyber
         
-    v_nar = st.select_slider("Náročnosť výroby", options=['1', '2', '3', '4', '5'], value='1')
+    v_nar = st.select_slider("Náročnosť dielu", options=['1', '2', '3', '4', '5'], value='1')
 
 with c2:
-    st.subheader("Geometria dielu")
-    v_d = st.number_input("Priemer (d) [mm]", value=50.0, step=0.1, format="%.2f")
-    v_l = st.number_input("Dĺžka (l) [mm]", value=100.0, step=0.1, format="%.2f")
+    st.subheader("Rozmery a Množstvo")
+    v_d = st.number_input("Priemer (d) [mm]", value=50.0, step=0.1)
+    v_l = st.number_input("Dĺžka (l) [mm]", value=100.0, step=0.1)
+    
+    # Počet kusov priamo na hlavnej ploche
+    v_ks = st.number_input("Počet kusov (sériovosť)", value=1, min_value=1, step=1)
 
-# --- 4. LOGIKA VÝPOČTU ---
+# --- 4. LOGIKA VÝPOČTU (IDENTICKÁ S MODELOM) ---
 st.markdown("---")
 
-if st.button("🚀 GENEROVAŤ PREDIKCIU ČASU", use_container_width=True):
+if st.button("🚀 GENEROVAŤ PREDIKCIU", use_container_width=True):
     if not v_ako_raw:
-        st.warning("Prosím, špecifikujte akosť materiálu.")
+        st.warning("Zadaj akosť materiálu pre výpočet.")
     else:
         try:
-            # SUPER-ČISTENIE VSTUPU
+            # A. ČISTENIE AKOSTI (bodka namiesto čiarky pre model)
             v_ako_clean = v_ako_raw.replace(",", ".").strip().upper()
             
-            # PRÍPRAVA DÁT
+            # B. PRÍPRAVA TABUĽKY PRE MODEL (One-Hot Encoding)
             input_df = pd.DataFrame(0.0, index=[0], columns=model_columns)
+            
+            # Numerické vstupy
             input_df['d'] = float(v_d)
             input_df['l'] = float(v_l)
-            input_df['pocet_kusov'] = np.log1p(float(v_ks))
             input_df['plocha_prierezu'] = (math.pi * (v_d**2)) / 4
             input_df['plocha_plasta'] = math.pi * v_d * v_l
             
+            # KRITICKÝ VSTUP: Logaritmus kusov (rovnako ako pri tréningu)
+            input_df['pocet_kusov'] = np.log1p(float(v_ks))
+            
+            # Aktivácia kategoriálnych stĺpcov
             target_cols = [f"material_{v_mat}", f"akost_{v_ako_clean}", f"narocnost_{v_nar}"]
             for col in target_cols:
                 if col in input_df.columns:
                     input_df[col] = 1.0
             
-            # VÝPOČET MODELOM
+            # C. PREDIKCIA (Výsledok je v logaritme minút)
             pred_log = model.predict(input_df)[0]
+            
+            # D. SPÄTNÁ TRANSFORMÁCIA (na reálne minúty)
             pred_min_1ks = np.expm1(pred_log)
             
-            # POISTKA 7 MIN
+            # E. POISTKA 7 MINÚT
             MIN_CAS = 7.0
             if pred_min_1ks < MIN_CAS:
                 pred_min_1ks = MIN_CAS
-                poistka_text = f" (Zarovnané na minimum {MIN_CAS} min)"
+                poistka_text = f"*(Zarovnané na minimálnu taxu {MIN_CAS} min)*"
             else:
                 poistka_text = ""
 
             pred_min_celkom = pred_min_1ks * v_ks
             
-            # ZOBRAZENIE
+            # F. ZOBRAZENIE VÝSLEDKOV
             r1, r2, r3 = st.columns(3)
+            
             with r1:
                 st.metric("Čas na 1 kus", f"{pred_min_1ks:.2f} min")
-                st.caption(poistka_text)
+                if poistka_text: st.write(poistka_text)
+            
             with r2:
-                st.metric("Celkový čas", f"{pred_min_celkom:.2f} min")
-                st.write(f"⏱️ **{pred_min_celkom/60:.2f} hod**")
+                st.metric("Čas na celú zákazku", f"{pred_min_celkom:.2f} min")
+                st.write(f"⏱️ **{pred_min_celkom/60:.2f} hodín**")
+                
             with r3:
+                # Kontrola, či model túto akosť pozná
                 if f"akost_{v_ako_clean}" in model_columns:
-                    st.success("✅ Akosť OK")
+                    st.success(f"Akosť '{v_ako_clean}' rozpoznaná")
                 else:
-                    st.error("⚠️ Neznáma akosť")
+                    st.error(f"Akosť '{v_ako_clean}' neznáma")
+                    st.caption("Model počíta podľa priemerných hodnôt materiálu.")
 
         except Exception as e:
-            st.error(f"Chyba: {e}")
+            st.error(f"Chyba pri spracovaní: {e}")
+
+st.markdown("---")
+st.caption("Mecasys AI v1.2 | Logika prepojená priamo na XGBoost model.")
