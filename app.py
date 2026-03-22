@@ -1,250 +1,130 @@
-import math
-import pickle
-from datetime import datetime
-
-import numpy as np
-import pandas as pd
-import requests
 import streamlit as st
-from xgboost import XGBRegressor
+import pandas as pd
+import numpy as np
+import xgboost as xgb
+import pickle
+import os
 
-# ==========================
-# KONŠTANTY
-# ==========================
+# --- KONFIGURÁCIA STRÁNKY ---
+st.set_page_config(page_title="Mecasys Kalkulačka v2", layout="wide")
 
-API_URL = "https://script.google.com/macros/s/AKfycbwxzha-vpADu7Q8hRKplV3i0p4Uo22ssaTCRzwTzqOWLNmvWPUJPnnsZbvpf08YRqTmFA/exec"
-
-URL_MATERIAL = "https://docs.google.com/spreadsheets/d/e/2PACX-1vRfPBZ4TCpQyiqybU0ADu3AMwHCi2qOKifQAOnnTWnorVNJ1SVxtN6zJzXthOxCVwtXWp__Bp_-nto0/pub?gid=901617097&single=true&output=csv"
-URL_LOJALITA = "https://docs.google.com/spreadsheets/d/e/2PACX-1vRfPBZ4TCpQyiqybU0ADu3AMwHCi2qOKifQAOnnTWnorVNJ1SVxtN6zJzXthOxCVwtXWp__Bp_-nto0/pub?gid=324957857&single=true&output=csv"
-URL_KOOP = "https://docs.google.com/spreadsheets/d/e/2PACX-1vRfPBZ4TCpQyiqybU0ADu3AMwHCi2qOKifQAOnnTWnorVNJ1SVxtN6zJzXthOxCVwtXWp__Bp_-nto0/pub?gid=1180392224&single=true&output=csv"
+# URL na číselník z Google Sheets
 URL_HUST = "https://docs.google.com/spreadsheets/d/e/2PACX-1vRfPBZ4TCpQyiqybU0ADu3AMwHCi2qOKifQAOnnTWnorVNJ1SVxtN6zJzXthOxCVwtXWp__Bp_-nto0/pub?gid=1281008948&single=true&output=csv"
 
-M1_MODEL_PATH = "finalny_model.json"
-M1_COLS_PATH = "stlpce_modelu.pkl"
-
-M2_MODEL_PATH = "xgb_model_cena.json"
-M2_COLS_PATH = "model_columns.pkl"
-
-# ==========================
-# LOAD MODELS
-# ==========================
+# --- FUNKCIE NA NAČÍTANIE DÁT ---
 
 @st.cache_resource
-def load_m1():
-    model = XGBRegressor()
-    model.load_model(M1_MODEL_PATH)
-    cols = pickle.load(open(M1_COLS_PATH, "rb"))
-    return model, cols
+def load_model_assets():
+    # Definujeme cesty k súborom v priečinku MECASYS_APP
+    model_path = os.path.join('MECASYS_APP', 'finalny_model.json')
+    columns_path = os.path.join('MECASYS_APP', 'stlpce_modelu.pkl')
+    
+    # Kontrola, či súbory existujú, aby aplikácia nespadla s nejasnou chybou
+    if not os.path.exists(model_path) or not os.path.exists(columns_path):
+        st.error(f"Chýbajú modelové súbory v priečinku MECASYS_APP! Hľadám: {model_path} a {columns_path}")
+        st.stop()
 
-@st.cache_resource
-def load_m2():
-    model = XGBRegressor()
-    model.load_model(M2_MODEL_PATH)
-    cols = pickle.load(open(M2_COLS_PATH, "rb"))
-    return model, cols
-
-# ==========================
-# LOAD CSV
-# ==========================
+    # Načítanie modelu
+    model = xgb.XGBRegressor()
+    model.load_model(model_path)
+    
+    # Načítanie zoznamu stĺpcov
+    with open(columns_path, 'rb') as f:
+        model_columns = pickle.load(f)
+        
+    return model, model_columns
 
 @st.cache_data
-def load_csv(url):
-    df = pd.read_csv(url)
-    df.columns = df.columns.astype(str).str.strip()
-    return df
-
-# ==========================
-# HUSTOTA
-# ==========================
-
-def get_hustota(material, akost, hustota_tab):
-    m = material.upper()
-    a = akost.upper()
-
-    if m in ["OCEĽ", "OCEL"]: return 7900
-    if m == "NEREZ": return 8000
-    if m == "FAREBNÉ KOVY":
-        if a.startswith("3.7"): return 4500
-        if a.startswith("3."): return 2900
-        if a.startswith("2."): return 9000
-
-    if m == "PLAST":
-        row = hustota_tab[hustota_tab["akost"].str.upper() == a]
-        if not row.empty:
-            return float(row["hustota"].iloc[0])
-
-    raise ValueError("Hustota nenájdená.")
-
-# ==========================
-# CENA MATERIÁLU
-# ==========================
-
-def compute_material(material_df, akost, d, l):
-    df = material_df.copy()
-    df["akost_clean"] = df["akost"].str.upper()
-    df["d"] = df["d"].astype(float)
-
-    subset = df[df["akost_clean"] == akost.upper()]
-    if subset.empty:
-        raise ValueError("Akosť nenájdená.")
-
-    exact = subset[subset["d"] == float(d)]
-    if not exact.empty:
-        cena = float(exact["cena_za_m"].iloc[0])
-    else:
-        higher = subset[subset["d"] > float(d)].sort_values("d")
-        cena = float(higher["cena_za_m"].iloc[0])
-
-    return (l / 1000) * cena
-
-# ==========================
-# KOOPERÁCIA
-# ==========================
-
-def compute_kooperacia(df, nazov, hmotnost, plocha_plasta, ks):
-    if not nazov:
-        return 0.0
-
-    row = df[df["nazov"].str.upper() == nazov.upper()].iloc[0]
-    tarifa = float(row["tarifa"])
-    jednotka = row["jednotka"].lower()
-    min_zak = float(row["minimalna_zakazka"])
-
-    if jednotka == "kg":
-        odhad = tarifa * hmotnost
-    else:
-        odhad = (plocha_plasta / 10000) * tarifa
-
-    celkom = odhad * ks
-    return max(celkom, min_zak) / ks
-
-# ==========================
-# M1 – PREDIKCIA ČASU
-# ==========================
-
-def pred_m1(model, cols, d, l, ks, material, akost, narocnost):
-    plocha_prierezu = math.pi * d**2 / 4
-    plocha_plasta = math.pi * d * l
-
-    df = pd.DataFrame([{
-        "d": d,
-        "l": l,
-        "pocet_kusov_log": np.log1p(ks),
-        "plocha_prierezu": plocha_prierezu,
-        "plocha_plasta": plocha_plasta,
-        "material": material.upper(),
-        "akost": akost.upper(),
-        "narocnost": narocnost.upper()
-    }])
-
-    df = pd.get_dummies(df).reindex(columns=cols, fill_value=0)
-    cas = float(np.expm1(model.predict(df)[0]))
-    return cas, plocha_prierezu, plocha_plasta
-
-# ==========================
-# M2 – PREDIKCIA CENY
-# ==========================
-
-def pred_m2(model, cols, cas, hmotnost, plocha_prierezu, vstup, lojalita, ks, krajina):
-    df = pd.DataFrame([{
-        "cas": cas,
-        "hmotnost": hmotnost,
-        "plocha_prierezu": plocha_prierezu,
-        "vstupne_naklady": vstup,
-        "lojalita": lojalita,
-        "pocet_kusov_log": np.log1p(ks),
-        "krajina": krajina.upper()
-    }])
-
-    df = pd.get_dummies(df).reindex(columns=cols, fill_value=0)
-    return float(np.expm1(model.predict(df)[0]))
-
-# ==========================
-# GOOGLE SCRIPT
-# ==========================
-
-def send_to_gs(payload):
+def load_catalog():
     try:
-        r = requests.post(API_URL, json=payload, timeout=10)
-        return r.status_code, r.text
+        df = pd.read_csv(URL_HUST)
+        # Vyčistenie textov pre správne párovanie (UPPERCASE a bez medzier)
+        for col in ['material', 'akost']:
+            if col in df.columns:
+                df[col] = df[col].astype(str).str.strip().str.upper()
+        return df
     except Exception as e:
-        return None, str(e)
+        st.error(f"Nepodarilo sa načítať číselník z URL: {e}")
+        return pd.DataFrame(columns=['material', 'akost', 'hustota'])
 
-# ==========================
-# MAIN
-# ==========================
+# --- INICIALIZÁCIA ---
+model, model_columns = load_model_assets()
+df_ciselnik = load_catalog()
 
-def main():
-    st.title("Cenová ponuka – predikcia času a ceny")
+# --- POUŽÍVATEĽSKÉ ROZHRANIE ---
+st.title("🏭 Mecasys - Predikcia výrobného času")
+st.info("Aplikácia používa XGBoost model a dynamický číselník materiálov.")
 
-    # MODELY
-    m1, m1_cols = load_m1()
-    m2, m2_cols = load_m2()
+with st.container():
+    col1, col2, col3 = st.columns(3)
+    
+    with col1:
+        st.subheader("📏 Geometria")
+        d = st.number_input("Priemer (d) [mm]", min_value=0.1, value=10.0, step=0.1)
+        l = st.number_input("Dĺžka (l) [mm]", min_value=0.1, value=50.0, step=1.0)
+        pocet_kusov = st.number_input("Počet kusov", min_value=1, value=1, step=1)
 
-    # DÁTA
-    df_mat = load_csv(URL_MATERIAL)
-    df_zak = load_csv(URL_LOJALITA)
-    df_koop = load_csv(URL_KOOP)
-    df_hust = load_csv(URL_HUST)
+    with col2:
+        st.subheader("🧪 Materiál a Akosť")
+        # Kaskádový výber z Google Sheets
+        kat_list = sorted(df_ciselnik['material'].unique()) if not df_ciselnik.empty else []
+        vybrany_mat = st.selectbox("Kategória materiálu", kat_list)
+        
+        akost_list = sorted(df_ciselnik[df_ciselnik['material'] == vybrany_mat]['akost'].unique()) if vybrany_mat else []
+        vybrana_akost = st.selectbox("Konkrétna akosť", akost_list)
+        
+        # Zobrazenie hustoty
+        if vybrana_akost:
+            hustota = df_ciselnik[(df_ciselnik['material'] == vybrany_mat) & 
+                                 (df_ciselnik['akost'] == vybrana_akost)]['hustota'].values[0]
+            st.caption(f"ℹ️ Hustota materiálu: {hustota} kg/dm³")
 
-    if "kosik" not in st.session_state:
-        st.session_state["kosik"] = []
+    with col3:
+        st.subheader("⚙️ Ostatné")
+        narocnost = st.selectbox("Náročnosť výroby", ["NIZKA", "STREDNA", "VYSOKA"])
 
-    # HLAVIČKA
-    st.sidebar.header("Hlavička CP")
-    datum = st.sidebar.date_input("Dátum", value=datetime.today())
-    cislo = st.sidebar.text_input("Číslo CP")
+# --- VÝPOČET A PREDIKCIA ---
+st.markdown("---")
 
-    exist = st.sidebar.checkbox("Existujúci zákazník", True)
+if st.button("🚀 Vypočítať predikciu", use_container_width=True):
+    # 1. Príprava vstupného riadku (všetko nuly, poradie podľa modelu)
+    input_df = pd.DataFrame(0, index=[0], columns=model_columns)
+    
+    # 2. Vyplnenie numerických hodnôt
+    input_df['d'] = d
+    input_df['l'] = l
+    input_df['pocet_kusov'] = np.log1p(pocet_kusov) # Logaritmická transformácia vstupu
+    input_df['plocha_prierezu'] = (np.pi * (d**2)) / 4
+    input_df['plocha_plasta'] = np.pi * d * l
+    
+    # 3. Nastavenie Dummy premenných (One-Hot Encoding)
+    def set_dummy(category, value):
+        col_name = f"{category}_{str(value).strip().upper()}"
+        if col_name in input_df.columns:
+            input_df[col_name] = 1
 
-    if exist:
-        zak = st.sidebar.selectbox("Zákazník", df_zak["zakaznik"].unique())
-        row = df_zak[df_zak["zakaznik"] == zak].iloc[0]
-        lojalita = float(row["lojalita"])
-        krajina = row["krajina"]
-    else:
-        zak = st.sidebar.text_input("Nový zákazník")
-        krajina = st.sidebar.text_input("Krajina", "SK")
-        lojalita = st.sidebar.number_input("Lojalita", 1.0)
+    set_dummy('material', vybrany_mat)
+    set_dummy('akost', vybrana_akost)
+    set_dummy('narocnost', narocnost)
 
-    # POLOŽKA
-    st.subheader("Položka")
-    item = st.text_input("ITEM")
-    d = st.number_input("Priemer d", 1.0)
-    l = st.number_input("Dĺžka l", 1.0)
-    ks = st.number_input("Počet kusov", 1)
-    material = st.selectbox("Materiál", ["OCEĽ", "NEREZ", "PLAST", "FAREBNÉ KOVY"])
-    akost = st.text_input("Akosť")
-    narocnost = st.selectbox("Náročnosť", ["1", "2", "3", "4", "5"])
+    # 4. Spustenie predikcie
+    try:
+        # Predikcia vráti logaritmus času
+        pred_log = model.predict(input_df)
+        # Transformácia späť na reálne minúty
+        vysledny_cas = np.expm1(pred_log)[0]
+        
+        # 5. Zobrazenie výsledkov
+        res_col1, res_col2 = st.columns(2)
+        res_col1.metric("Odhadovaný čas (1 ks)", f"{vysledny_cas:.2f} min")
+        res_col2.metric("Celkový čas zákazky", f"{(vysledny_cas * pocet_kusov / 60):.2f} hod")
+        
+        st.success("Predikcia bola úspešne vypočítaná.")
+        
+    except Exception as e:
+        st.error(f"Chyba pri výpočte: {e}")
 
-    koop = st.checkbox("Kooperácia")
-    nazov_koop = st.selectbox("Typ kooperácie", df_koop["nazov"].unique()) if koop else None
-
-    if st.button("Pridať do košíka"):
-        h = get_hustota(material, akost, df_hust)
-        cas, pp, ppl = pred_m1(m1, m1_cols, d, l, ks, material, akost, narocnost)
-        hmotnost = h * (math.pi/4) * (d/1000)**2 * (l/1000)
-        naklad_mat = compute_material(df_mat, akost, d, l)
-        naklad_koop = compute_kooperacia(df_koop, nazov_koop, hmotnost, ppl, ks)
-        vstup = naklad_mat + naklad_koop
-        jcena = pred_m2(m2, m2_cols, cas, hmotnost, pp, vstup, lojalita, ks, krajina)
-        spolu = jcena * ks
-
-        st.session_state["kosik"].append({
-            "item": item,
-            "ks": ks,
-            "jcena": jcena,
-            "spolu": spolu
-        })
-
-        st.success("Položka pridaná.")
-
-    # KOŠÍK
-    st.subheader("Košík")
-    if st.session_state["kosik"]:
-        df = pd.DataFrame(st.session_state["kosik"])
-        st.dataframe(df)
-        st.write("Celkom:", df["spolu"].sum(), "€")
-
-if __name__ == "__main__":
-    main()
+# --- LADENIE (DEBUG) ---
+with st.expander("🔍 Technický detail (Vstupy do modelu)"):
+    st.write("Tento riadok bol odoslaný do modelu XGBoost:")
+    st.dataframe(input_df)
