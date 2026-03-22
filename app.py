@@ -2,83 +2,70 @@ import streamlit as st
 import pandas as pd
 from datetime import date
 
-st.title("Moja postupná aplikácia")
-
-# 1. Načítanie dát
-SHEET_URL = "https://docs.google.com/spreadsheets/d/e/2PACX-1vRfPBZ4TCpQyiqybU0ADu3AMwHCi2qOKifQAOnnTWnorVNJ1SVxtN6zJzXthOxCVwtXWp__Bp_-nto0/pub?gid=324957857&single=true&output=csv"
+# --- NAČÍTANIE DÁT ---
+SHEET_ZAKAZNICI = "https://docs.google.com/spreadsheets/d/e/2PACX-1vRfPBZ4TCpQyiqybU0ADu3AMwHCi2qOKifQAOnnTWnorVNJ1SVxtN6zJzXthOxCVwtXWp__Bp_-nto0/pub?gid=324957857&single=true&output=csv"
+SHEET_MATERIALY = "https://docs.google.com/spreadsheets/d/e/2PACX-1vRfPBZ4TCpQyiqybU0ADu3AMwHCi2qOKifQAOnnTWnorVNJ1SVxtN6zJzXthOxCVwtXWp__Bp_-nto0/pub?gid=1281008948&single=true&output=csv"
 
 @st.cache_data
-def load_data():
+def load_data(url):
     try:
-        df = pd.read_csv(SHEET_URL)
-        return df
-    except Exception as e:
-        return pd.DataFrame(columns=['zakaznik', 'krajina', 'lojalita'])
+        return pd.read_csv(url)
+    except:
+        return pd.DataFrame()
 
-df = load_data()
+df_zakaznici = load_data(SHEET_ZAKAZNICI)
+df_mat = load_data(SHEET_MATERIALY)
 
-# --- 1. IDENTIFIKÁCIA PONUKY ---
-st.subheader("1. Identifikácia ponuky")
-col_a, col_b = st.columns(2)
-with col_a:
-    datum = st.date_input("Dátum vystavenia ponuky", value=date.today())
-    ponuka = st.text_input("Označenie cenovej ponuky", placeholder="napr. CP-2024-001")
-with col_b:
-    item = st.text_input("Označenie komponentu (Item)", placeholder="napr. Hriadeľ")
+st.title("Moja postupná aplikácia")
+
+# ... (tu ostáva kód pre Identifikáciu a Zákazníka, ktorý sme už vytvorili) ...
 
 st.divider()
 
-# --- 2. DETAILY ZÁKAZNÍKA ---
-st.subheader("2. Detaily zákazníka")
-moznosti_zakaznikov = ["--- Vyber zo zoznamu ---", "Nový zákazník (zadať manuálne)"] + sorted(df['zakaznik'].unique().tolist())
-vyber = st.selectbox("Zákazník", moznosti_zakaznikov)
+# --- 5. VÝBER MATERIÁLU A AKOSTI ---
+st.subheader("5. Materiálové parametre")
 
-if vyber == "Nový zákazník (zadať manuálne)":
-    zakaznik = st.text_input("Meno nového zákazníka")
-    krajina = st.text_input("Krajina")
-    lojalita = 0.5
-elif vyber != "--- Vyber zo zoznamu ---":
-    data_zakaznika = df[df['zakaznik'] == vyber].iloc[0]
-    zakaznik = vyber
-    krajina = str(data_zakaznika['krajina'])
-    lojalita = float(data_zakaznika['lojalita'])
-else:
-    zakaznik, krajina, lojalita = "", "", 0.0
+col_mat, col_ako = st.columns(2)
 
-if vyber != "--- Vyber zo zoznamu ---":
-    c1, c2 = st.columns(2)
-    c1.info(f"**Lokalita:** {krajina}")
-    c2.info(f"**Lojalita (koeficient):** {lojalita}")
+with col_mat:
+    zoznam_materialov = sorted(df_mat['material'].unique().tolist())
+    material = st.selectbox("Vyber materiál", zoznam_materialov)
+
+with col_ako:
+    # Filter akostí podľa vybraného materiálu
+    df_filtrovane = df_mat[df_mat['material'] == material]
+    zoznam_akosti = sorted(df_filtrovane['akost'].unique().tolist())
+    akost = st.selectbox("Vyber akosť", zoznam_akosti)
+
+# --- VÝPOČET HUSTOTY (tvoja logika) ---
+hustota = 0.0
+
+if material == "NEREZ":
+    hustota = 8000.0
+elif material == "OCEĽ":
+    hustota = 7900.0
+elif material == "PLAST":
+    # Dotiahnutie zo stĺpca 'hustota' v sheete
+    try:
+        hustota = float(df_filtrovane[df_filtrovane['akost'] == akost]['hustota'].iloc[0])
+    except:
+        hustota = 0.0
+elif material == "FAREBNÉ KOVY":
+    akost_str = str(akost)
+    if akost_str.startswith("3.7"):
+        hustota = 4500.0
+    elif akost_str.startswith("3."):
+        hustota = 2900.0
+    elif akost_str.startswith("2."):
+        hustota = 9000.0
+
+# --- ZOBRAZENIE HUSTOTY NA OBRAZOVKE ---
+st.metric(label=f"Aktuálna hustota pre {material} ({akost})", value=f"{hustota} kg/m³")
+
+# Ak je hustota 0, upozorníme užívateľa
+if hustota == 0:
+    st.warning("Pozor: Hustota pre túto kombináciu nebola nájdená alebo vypočítaná.")
 
 st.divider()
 
-# --- 3. TECHNICKÉ PARAMETRE ---
-st.subheader("3. Technické parametre komponentu")
-col_d, col_l = st.columns(2)
-
-with col_d:
-    d = st.number_input("Priemer komponentu (d) [mm]", min_value=0.0, value=0.0, step=0.1, format="%.2f")
-
-with col_l:
-    l = st.number_input("Dĺžka komponentu (l) [mm]", min_value=0.0, value=0.0, step=0.1, format="%.2f")
-
-# NOVÁ PREMENNÁ - narocnost (kategorická, uložená ako string)
-narocnost = st.select_slider(
-    "Náročnosť výroby (1 - najnižšia, 5 - najvyššia)",
-    options=["1", "2", "3", "4", "5"],
-    value="3"
-)
-
-st.divider()
-
-# --- 4. PARAMETRE VÝROBY ---
-st.subheader("4. Parametre výroby")
-pocet_kusov = st.number_input("Počet kusov na výrobu", min_value=1, value=1, step=1)
-
-# --- SÚHRN ---
-if zakaznik and ponuka and item:
-    with st.expander("Pozrieť detailné zhrnutie"):
-        st.write(f"**Zákazník:** {zakaznik}")
-        st.write(f"**Item:** {item} (d={d}mm, l={l}mm)")
-        st.write(f"**Náročnosť:** {narocnost}")
-        st.write(f"**Množstvo:** {pocet_kusov} ks")
+# ... (nasleduje d, l, narocnost a pocet_kusov) ...
