@@ -23,55 +23,67 @@ d = st.number_input("Priemer komponentu [mm]", min_value=0.0, step=0.1, format="
 # 7. premenná - l
 l = st.number_input("Dĺžka komponentu [mm]", min_value=0.0, step=0.1, format="%.2f")
 
-# Načítanie dát s ošetrením názvov stĺpcov a obsahu
+# --- SPRÁVNE NAČÍTANIE SHEETU ---
 sheet_url = "https://docs.google.com/spreadsheets/d/e/2PACX-1vRfPBZ4TCpQyiqybU0ADu3AMwHCi2qOKifQAOnnTWnorVNJ1SVxtN6zJzXthOxCVwtXWp__Bp_-nto0/pub?gid=1281008948&single=true&output=csv"
-df_materialy = pd.read_csv(sheet_url)
 
-# OČISTA DÁT: Odstráni medzery z názvov stĺpcov aj z hodnôt v bunkách
-df_materialy.columns = df_materialy.columns.str.strip()
-df_materialy['material'] = df_materialy['material'].astype(str).str.strip()
-df_materialy['akost'] = df_materialy['akost'].astype(str).str.strip()
+@st.cache_data
+def load_data(url):
+    # Načítame CSV
+    data = pd.read_csv(url)
+    # Očistíme názvy stĺpcov od medzier (napr. z "hustota " urobí "hustota")
+    data.columns = data.columns.str.strip()
+    # Očistíme textové hodnoty v stĺpcoch material a akost
+    for col in ['material', 'akost']:
+        data[col] = data[col].astype(str).str.strip()
+    return data
 
-# 8. a 9. premenná (už budú čisté)
-seznam_materialov = df_materialy['material'].unique()
+df_materialy = load_data(sheet_url)
+
+# 8. PREMENNÁ - Materiál
+seznam_materialov = sorted(df_materialy['material'].unique())
 material = st.selectbox("Materiál", options=seznam_materialov)
 
-seznam_akosti = df_materialy[df_materialy['material'] == material]['akost'].unique()
+# 9. PREMENNÁ - Akosť
+seznam_akosti = sorted(df_materialy[df_materialy['material'] == material]['akost'].unique())
 akost = st.selectbox("Akosť", options=seznam_akosti)
 
-# 10. premenná - hustota
+# 10. PREMENNÁ - HUSTOTA (opravená pre formát 1,500.00)
 hustota = 0.0
+
 if material == "PLAST":
     vyber = df_materialy[(df_materialy['material'] == material) & (df_materialy['akost'] == akost)]
     if not vyber.empty:
-        raw_hustota = vyber['hustota'].values[0]
-        # Vyčistenie čísla
-        clean_text = re.sub(r'[^0-9,.]', '', str(raw_hustota)).replace(',', '.')
+        # Získame hodnotu a preistotu ju zbavíme všetkých bielych znakov (medzier)
+        raw_val = str(vyber['hustota'].values[0]).strip()
+        
+        # 1. Odstránime čiarku (oddeľovač tisícov)
+        temp_val = raw_val.replace(',', '')
+        
+        # 2. Ponecháme len číslice a bodku (desatinnú)
+        clean_val = re.sub(r'[^0-9.]', '', temp_val)
+        
         try:
-            hustota = float(clean_text)
+            hustota = float(clean_val)
         except ValueError:
             hustota = 0.0
-
-# ... (zvyšok logiky pre NEREZ, OCEĽ, KOVY zostáva rovnaký) ...
+            
 elif material == "NEREZ":
     hustota = 8000.0
 elif material == "OCEĽ":
     hustota = 7900.0
 elif material == "FAREBNÉ KOVY":
-    if akost.startswith("3.7"):
-        hustota = 4500.0
-    elif akost.startswith("3."):
-        hustota = 2900.0
-    elif akost.startswith("2."):
-        hustota = 9000.0
+    if akost.startswith("3.7"): hustota = 4500.0
+    elif akost.startswith("3."): hustota = 2900.0
+    elif akost.startswith("2."): hustota = 9000.0
 
-# Ak sa hustotu nepodarilo určiť, užívateľ ju zadá ručne
+# ZOBRAZENIE / RUČNÉ ZADANIE
 if hustota <= 0:
-    hustota = st.number_input("Hustota nebola nájdená. Zadajte ju ručne [kg/m3]", min_value=0.0, step=10.0, format="%.2f")
-
-# Finálna kontrola
-if hustota > 0:
-    st.info(f"Aktuálna hustota: {hustota} kg/m3")
+    hustota = st.number_input("Hustota nenájdená. Zadajte manuálne [kg/m3]:", min_value=0.0, format="%.2f")
 else:
-    st.warning("Zadajte platnú hustotu pre pokračovanie.")
+    # Ak sa našla, urobíme ju editovateľnú (užívateľ ju vidí a môže zmeniť)
+    hustota = st.number_input("Hustota materiálu [kg/m3]:", value=hustota, format="%.2f")
+
+# Validácia pred pokračovaním
+if hustota <= 0:
+    st.warning("Pre pokračovanie je potrebné určiť hustotu materiálu.")
     st.stop()
