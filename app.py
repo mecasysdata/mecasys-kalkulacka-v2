@@ -161,3 +161,54 @@ else:
 
 # Zobrazenie výsledných hodnôt pre kontrolu
 st.info(f"Zákazník: **{zakaznik}** | Krajina: **{krajina}** | Lojalita: **{lojalita}**")
+
+# --- NAČÍTANIE SHEETU CENA MATERIÁLU ---
+sheet_cena_url = "https://docs.google.com/spreadsheets/d/e/2PACX-1vRfPBZ4TCpQyiqybU0ADu3AMwHCi2qOKifQAOnnTWnorVNJ1SVxtN6zJzXthOxCVwtXWp__Bp_-nto0/pub?gid=901617097&single=true&output=csv"
+
+@st.cache_data
+def load_material_prices(url):
+    data = pd.read_csv(url)
+    data.columns = data.columns.str.strip()
+    # Očistíme texty pre presné párovanie
+    for col in ['material', 'akost']:
+        if col in data.columns:
+            data[col] = data[col].astype(str).str.strip()
+    return data
+
+df_ceny = load_material_prices(sheet_cena_url)
+
+st.subheader("Cena materiálu")
+
+# Inicializácia premenných pre výpočet
+cena_za_meter = 0.0
+pouzite_d_zo_sheetu = None
+
+# 1. Pokus o nájdenie v tabuľke
+mask = (df_ceny['material'] == material) & (df_ceny['akost'] == akost)
+dostupne_rozmery = df_ceny[mask].copy()
+
+if not dostupne_rozmery.empty:
+    # Hľadáme najbližšie d >= zadatému d (6. premenná)
+    vhodne_riadky = dostupne_rozmery[dostupne_rozmery['d'] >= d]
+    
+    if not vhodne_riadky.empty:
+        # Zoradíme a vezmeme najmenší vyhovujúci priemer
+        najblizsi = vhodne_riadky.sort_values(by='d').iloc[0]
+        cena_za_meter = float(najblizsi['cena'])
+        pouzite_d_zo_sheetu = najblizsi['d']
+        st.success(f"Automaticky nájdená cena v cenníku (pre d={pouzite_d_zo_sheetu} mm): **{cena_za_meter:.2f} €/m**")
+
+# 2. Ak sa v tabuľke nič nenašlo (alebo nie je dosť veľké d), užívateľ zadáva ručne
+if cena_za_meter <= 0:
+    st.info("Materiál, akosť alebo vyhovujúci priemer sa v cenníku nenachádza.")
+    cena_za_meter = st.number_input("Zadajte cenu materiálu za meter (hodnota zo stĺpca 'cena') [€/m]:", min_value=0.0, format="%.2f")
+
+# 3. FINÁLNY VÝPOČET: 14. PREMENNÁ cena_material
+# Vzorec: cena_material = cena * l / 1000
+cena_material = cena_za_meter * (l / 1000)
+
+if cena_material > 0:
+    st.metric("Vypočítaná cena materiálu na 1 kus", f"{cena_material:.2f} €")
+else:
+    st.warning("Zadajte cenu materiálu pre pokračovanie.")
+    st.stop()
