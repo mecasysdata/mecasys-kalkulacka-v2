@@ -191,9 +191,7 @@ st.subheader("Cena materiálu")
 cena_za_meter = 0.0
 pouzite_d_zo_sheetu = None
 
-# 1. Pokus o nájdenie v tabuľke
-mask = (df_ceny['material'] == material) & (df_ceny['akost'] == akost)
-dostupne_rozmery = df_ceny[mask].copy()
+# --- TENTO BLOK NAHRÁDZA RIADKY 194 AŽ 211 ---
 
 if not dostupne_rozmery.empty:
     # Hľadáme najbližšie d >= zadatému d (6. premenná)
@@ -202,14 +200,26 @@ if not dostupne_rozmery.empty:
     if not vhodne_riadky.empty:
         # Zoradíme a vezmeme najmenší vyhovujúci priemer
         najblizsi = vhodne_riadky.sort_values(by='d').iloc[0]
-        cena_za_meter = float(najblizsi['cena'])
-        pouzite_d_zo_sheetu = najblizsi['d']
-        st.success(f"Automaticky nájdená cena v cenníku (pre d={pouzite_d_zo_sheetu} mm): **{cena_za_meter:.2f} €/m**")
+        
+        # BEZPEČNÉ NAČÍTANIE CENY:
+        try:
+            # Ak je v tabuľke hodnota, skúsime ju zmeniť na číslo
+            cena_za_meter = float(str(najblizsi['cena']).replace(',', '.'))
+            pouzite_d_zo_sheetu = najblizsi['d']
+            st.success(f"Automaticky nájdená cena v cenníku (pre d={pouzite_d_zo_sheetu} mm): **{cena_za_meter:.2f} €/m**")
+        except:
+            # Ak sa nepodarí (napr. prázdna bunka alebo text), cena zostane 0.0
+            cena_za_meter = 0.0
+    else:
+        st.info("V cenníku nie je dostatočne veľký priemer (d) pre tento materiál.")
+else:
+    st.info("Materiál alebo akosť sa v cenníku nenachádza.")
 
-# 2. Ak sa v tabuľke nič nenašlo (alebo nie je dosť veľké d), užívateľ zadáva ručne
+# 2. Ak sa v tabuľke nič nenašlo (alebo nastala chyba), užívateľ zadáva ručne
 if cena_za_meter <= 0:
-    st.info("Materiál, akosť alebo vyhovujúci priemer sa v cenníku nenachádza.")
-    cena_za_meter = st.number_input("Zadajte cenu materiálu za meter (hodnota zo stĺpca 'cena') [€/m]:", min_value=0.0, format="%.2f")
+    cena_za_meter = st.number_input("Zadajte cenu materiálu za meter (hodnota zo stĺpca 'cena') [€/m]:", min_value=0.0, format="%.2f", key="input_rucna_cena")
+
+# --- KONIEC NÁHRADY ---
 
 # 3. FINÁLNY VÝPOČET: 14. PREMENNÁ cena_material
 # Vzorec: cena_material = cena * l / 1000
