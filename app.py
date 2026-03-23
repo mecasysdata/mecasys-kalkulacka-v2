@@ -473,7 +473,6 @@ else:
 # --- EXPORT DO GOOGLE SHEET (CEZ APPS SCRIPT) ---
 st.divider()
 
-# Skontrolujeme, či sú v ponuke nejaké položky
 if st.session_state.polozky_ponuky:
     st.subheader("🚀 Odoslanie do databázy")
     
@@ -486,48 +485,59 @@ if st.session_state.polozky_ponuky:
             "items": []
         }
         
-        # Vygenerujeme jedno číslo CP pre celú túto dávku (napr. podľa času)
+        # Vygenerujeme jedno číslo CP pre celú túto dávku
         cislo_cp = "CP-" + datetime.datetime.now().strftime("%Y%m%d-%H%M")
         dnesny_datum = datetime.date.today().strftime("%d.%m.%Y")
 
-        # Prechádzame položky v košíku a mapujeme ich na stĺpce v Sheete
-        for i, item in enumerate(st.session_state.polozky_ponuky):
-            data_na_odoslanie["items"].append({
-                "datum": dnesny_datum,
-                "cislo_cp": cislo_cp,
-                "zakaznik": zakaznik,      # Premenná 13 (uisti sa, že je definovaná)
-                "krajina": krajina,        # Premenná 12
-                "lojalita": lojalita,      # Ak máš premennú pre lojalitu, inak daj "N/A"
-                "item_nazov": f"Item {i+1}", 
-                "material": item["Materiál"],
-                "akost": item["Akosť"],
-                "d": d,                    # Aktuálne d z UI
-                "l": l,                    # Aktuálne l z UI
-                "hustota": hustota,
-                "hmotnost": hmotnost,
-                "narocnost": "Štandard",   # Prípadne tvoja premenná
-                "j_cena_mat": cena_za_meter,
-                "naklad_mat": cena_material,
-                "naklad_koop": cena_kooperacia,
-                "vstupne_naklady": cena_material + cena_kooperacia,
-                "cas": float(item["Čas/ks [min]"]),
-                "jednotkova_cena": float(item["Cena/ks [€]"]),
-                "pocet_kusov": int(item["Počet kusov"]),
-                "cena_spolu": float(item["Spolu [€]"])
-            })
-
-        # Odoslanie requestu
         try:
-            with st.spinner("Odosielam dáta..."):
-                response = requests.post(url_scriptu, json=data_na_odoslanie)
+            # Prechádzame položky v košíku a mapujeme ich na stĺpce v Sheete
+            for i, item in enumerate(st.session_state.polozky_ponuky):
+                
+                # OŠETRENIE DÁT: Prevod textových hodnôt z tabuľky na čisté čísla
+                # Odstránime " min" a " €", aby sme mohli použiť float()
+                cisty_cas = float(str(item["Čas (M1)"]).replace(' min', '').replace(',', '.').strip())
+                cista_jednotkova_cena = float(str(item["Cena/ks (M2)"]).replace(' €', '').replace(',', '.').strip())
+                cista_suma_polozky = float(str(item["Spolu"]).replace(' €', '').replace(',', '.').strip())
+                cisty_pocet_kusov = int(item["Kusov"])
+
+                data_na_odoslanie["items"].append({
+                    "datum": dnesny_datum,
+                    "cislo_cp": cislo_cp,
+                    "zakaznik": zakaznik,      # Premenná 13
+                    "krajina": krajina,        # Premenná 12
+                    "lojalita": lojalita if 'lojalita' in locals() else "N/A",
+                    "item_nazov": f"Item {i+1}", 
+                    "material": item["Materiál"],
+                    "akost": item["Akosť"],
+                    "d": d,
+                    "l": l,
+                    "hustota": hustota,
+                    "hmotnost": hmotnost,
+                    "narocnost": "Štandard",
+                    "j_cena_mat": cena_za_meter,
+                    "naklad_mat": cena_material,
+                    "naklad_koop": cena_kooperacia,
+                    "vstupne_naklady": cena_material + cena_kooperacia,
+                    "cas": cisty_cas,
+                    "jednotkova_cena": cista_jednotkova_cena,
+                    "pocet_kusov": cisty_pocet_kusov,
+                    "cena_spolu": cista_suma_polozky
+                })
+
+            # Odoslanie requestu
+            with st.spinner("Odosielam dáta do Google Sheet..."):
+                response = requests.post(url_scriptu, json=data_na_odoslanie, timeout=10)
                 
             if response.status_code == 200:
                 st.success(f"✅ Ponuka {cislo_cp} bola úspešne zapísaná do databázy!")
-                # Po úspešnom zápise môžeme vymazať košík
+                # Voliteľné: Ak chceš po úspešnom zápise vymazať košík, odkomentuj riadky nižšie:
                 # st.session_state.polozky_ponuky = []
-                # st.rerun() 
+                # st.rerun()
             else:
-                st.error(f"Chyba servera: {response.status_code}")
+                st.error(f"Chyba servera (Apps Script): {response.status_code}")
+                
+        except KeyError as e:
+            st.error(f"Chyba v názve stĺpca: {e}. Skontroluj, či sa názvy v tabuľke zhodujú s kódom.")
         except Exception as e:
             st.error(f"Nepodarilo sa spojiť s Google Scriptom: {e}")
 else:
