@@ -233,3 +233,10 @@ plocha_prierez_dm2 = plocha_prierezu / 10000
 
 # Zobrazenie výsledku
 st.write(f"**Plocha prierezu v dm²:** {plocha_prierez_dm2:.4f} dm²")
+
+# 18. PREMENNÁ - Plocha plášťa v mm2
+# Vzorec: obvod kruhu (pi * d) vynásobený dĺžkou (l)
+plocha_plasta = math.pi * d * l
+
+# Zobrazenie výsledku
+st.write(f"**Plocha plášťa:** {plocha_plasta:.2f} mm²")
