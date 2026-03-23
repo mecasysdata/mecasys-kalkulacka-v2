@@ -220,3 +220,9 @@ hmotnost = hustota * (math.pi / 4) * (d / 1000)**2 * (l / 1000)
 
 # Zobrazenie výsledku pre kontrolu
 st.write(f"**Hmotnosť 1 kusu:** {hmotnost:.4f} kg")
+
+# 16. PREMENNÁ - Plocha prierezu v mm2
+plocha_prierezu = (math.pi * d**2) / 4
+
+# Zobrazenie výsledku
+st.write(f"**Plocha prierezu:** {plocha_prierezu:.2f} mm²")
