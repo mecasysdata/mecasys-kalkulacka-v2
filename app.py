@@ -6,6 +6,8 @@ import re
 import numpy as np
 import pickle
 from xgboost import XGBRegressor
+import requests
+import datetime
 
 # --- INICIALIZÁCIA KOŠÍKA (SESSION STATE) ---
 if 'polozky_ponuky' not in st.session_state:
@@ -467,3 +469,66 @@ if st.session_state.polozky_ponuky:
         st.rerun()
 else:
     st.info("Ponuka je prázdna. Pridajte prvú položku pomocou tlačidla vyššie.")
+
+# --- EXPORT DO GOOGLE SHEET (CEZ APPS SCRIPT) ---
+st.divider()
+
+# Skontrolujeme, či sú v ponuke nejaké položky
+if st.session_state.polozky_ponuky:
+    st.subheader("🚀 Odoslanie do databázy")
+    
+    if st.button("Zapísať celú ponuku do Google Sheet"):
+        # Tvoja URL z Apps Scriptu
+        url_scriptu = "https://script.google.com/macros/s/AKfycbwjChtJjHiZZyU8nVVpHKhcRj2z77pqrJNTw6rDm9dy_WzFaX6Yj0zzbmCSeHU7r8UUyA/exec"
+        
+        # Príprava balíka dát
+        data_na_odoslanie = {
+            "items": []
+        }
+        
+        # Vygenerujeme jedno číslo CP pre celú túto dávku (napr. podľa času)
+        cislo_cp = "CP-" + datetime.datetime.now().strftime("%Y%m%d-%H%M")
+        dnesny_datum = datetime.date.today().strftime("%d.%m.%Y")
+
+        # Prechádzame položky v košíku a mapujeme ich na stĺpce v Sheete
+        for i, item in enumerate(st.session_state.polozky_ponuky):
+            data_na_odoslanie["items"].append({
+                "datum": dnesny_datum,
+                "cislo_cp": cislo_cp,
+                "zakaznik": zakaznik,      # Premenná 13 (uisti sa, že je definovaná)
+                "krajina": krajina,        # Premenná 12
+                "lojalita": lojalita,      # Ak máš premennú pre lojalitu, inak daj "N/A"
+                "item_nazov": f"Item {i+1}", 
+                "material": item["Materiál"],
+                "akost": item["Akosť"],
+                "d": d,                    # Aktuálne d z UI
+                "l": l,                    # Aktuálne l z UI
+                "hustota": hustota,
+                "hmotnost": hmotnost,
+                "narocnost": "Štandard",   # Prípadne tvoja premenná
+                "j_cena_mat": cena_za_meter,
+                "naklad_mat": cena_material,
+                "naklad_koop": cena_kooperacia,
+                "vstupne_naklady": cena_material + cena_kooperacia,
+                "cas": float(item["Čas/ks [min]"]),
+                "jednotkova_cena": float(item["Cena/ks [€]"]),
+                "pocet_kusov": int(item["Počet kusov"]),
+                "cena_spolu": float(item["Spolu [€]"])
+            })
+
+        # Odoslanie requestu
+        try:
+            with st.spinner("Odosielam dáta..."):
+                response = requests.post(url_scriptu, json=data_na_odoslanie)
+                
+            if response.status_code == 200:
+                st.success(f"✅ Ponuka {cislo_cp} bola úspešne zapísaná do databázy!")
+                # Po úspešnom zápise môžeme vymazať košík
+                # st.session_state.polozky_ponuky = []
+                # st.rerun() 
+            else:
+                st.error(f"Chyba servera: {response.status_code}")
+        except Exception as e:
+            st.error(f"Nepodarilo sa spojiť s Google Scriptom: {e}")
+else:
+    st.info("Pridajte položky do ponuky, aby ste ich mohli exportovať.")
