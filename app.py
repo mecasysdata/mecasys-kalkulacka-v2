@@ -37,9 +37,12 @@ akost = st.selectbox("Akosť", options=seznam_akosti)
 
 # 10. premenná - hustota
 if material == "PLAST":
-    # Vytiahne hodnotu 'hustota' z riadku, kde sa zhoduje materiál aj akosť
+    # Vytiahne hodnotu 'hustota', odstráni medzery a nahradí čiarku bodkou pre správny prevod na float
     hustota_val = df_materialy[(df_materialy['material'] == "PLAST") & (df_materialy['akost'] == akost)]['hustota'].values[0]
-    hustota = float(hustota_val)
+    
+    # Ošetrenie formátu (odstránenie netlačiteľných znakov, medzier a zámena , za .)
+    hustota_clean = str(hustota_val).replace(',', '.').replace('\xa0', '').replace(' ', '')
+    hustota = float(hustota_clean)
 elif material == "NEREZ":
     hustota = 8000.0
 elif material == "OCEĽ":
@@ -52,9 +55,8 @@ elif material == "FAREBNÉ KOVY":
     elif akost.startswith("2."):
         hustota = 9000.0
     else:
-        hustota = 0.0 # Definujeme základnú hodnotu, ak by akosť nespadala do podmienok
+        hustota = 0.0
 else:
     hustota = 0.0
 
-# Zobrazenie premennej (voliteľné pre kontrolu, alebo ju môžeme nechať len v pamäti)
 st.write(f"Vypočítaná hustota: {hustota}")
