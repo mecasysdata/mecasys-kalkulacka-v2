@@ -1,8 +1,7 @@
 import streamlit as st
 import pandas as pd
-import re
 from datetime import date
-
+import re
 # 1. premenná - dátum
 datum = st.date_input("Dátum", value=date.today())
 
