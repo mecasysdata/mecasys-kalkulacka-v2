@@ -7,6 +7,23 @@ import numpy as np
 import pickle
 from xgboost import XGBRegressor
 
+# --- INICIALIZÁCIA KOŠÍKA (SESSION STATE) ---
+if 'polozky_ponuky' not in st.session_state:
+    st.session_state.polozky_ponuky = []
+
+def pridat_polozku():
+    nova_polozka = {
+        "Materiál": material,
+        "Akosť": akost,
+        "Rozmer (d x l)": f"{d} x {l} mm",
+        "Kusov": pocet_kusov,
+        "Čas (M1)": f"{cas:.2f} min",
+        "Cena/ks (M2)": f"{predikovana_cena_m2:.2f} €",
+        "Spolu": f"{predikovana_cena_m2 * pocet_kusov:.2f} €"
+    }
+    st.session_state.polozky_ponuky.append(nova_polozka)
+    st.toast("Položka bola pridaná do ponuky! ✅")
+
 # 1. premenná - dátum
 datum = st.date_input("Dátum", value=date.today())
 
@@ -428,3 +445,25 @@ try:
 except Exception as e:
     # Ak súbory na Gite nie sú v správnom priečinku, tu uvidíš chybu
     st.warning(f"Model M2 nie je k dispozícii. (Chyba: {e})")
+
+st.divider()
+st.subheader("📦 Aktuálna cenová ponuka")
+
+# Tlačidlo na pridanie
+st.button("➕ Pridať aktuálny výpočet do ponuky", on_click=pridat_polozku)
+
+if st.session_state.polozky_ponuky:
+    # Zobrazenie tabuľky s položkami
+    df_ponuka = pd.DataFrame(st.session_state.polozky_ponuky)
+    st.table(df_ponuka)
+    
+    # Výpočet celkovej sumy
+    celkova_suma = sum([float(i['Spolu'].replace(' €', '')) for i in st.session_state.polozky_ponuky])
+    st.metric("CELKOVÁ CENA PONUKY", f"{celkova_suma:.2f} €")
+    
+    # Tlačidlo na vymazanie
+    if st.button("🗑️ Vymazať celú ponuku"):
+        st.session_state.polozky_ponuky = []
+        st.rerun()
+else:
+    st.info("Ponuka je prázdna. Pridajte prvú položku pomocou tlačidla vyššie.")
