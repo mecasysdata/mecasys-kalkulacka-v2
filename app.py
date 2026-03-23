@@ -36,8 +36,7 @@ material = st.selectbox("Materiál", options=seznam_materialov)
 seznam_akosti = df_materialy[df_materialy['material'] == material]['akost'].unique()
 akost = st.selectbox("Akosť", options=seznam_akosti)
 
-# 10. premenná - hustota
-(ZJEDNODUŠENÁ LOGIKA)
+# 10. premenná - hustota (ZJEDNODUŠENÁ LOGIKA)
 if material == "PLAST":
     hustota_val = df_materialy[(df_materialy['material'] == "PLAST") & (df_materialy['akost'] == akost)]['hustota'].values[0]
     # Keďže sme to nastavili pri pd.read_csv, hustota by už mala byť číslo (float)
