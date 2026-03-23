@@ -40,12 +40,29 @@ akost = st.selectbox("Akosť", options=seznam_akosti)
 hustota = 0.0
 
 if material == "PLAST":
-    try:
-        raw_hustota = df_materialy[(df_materialy['material'] == "PLAST") & (df_materialy['akost'] == akost)]['hustota'].values[0]
-        clean_hustota = str(raw_hustota).replace(',', '.').replace('\xa0', '').replace(' ', '')
-        hustota = float(clean_hustota)
-    except (IndexError, ValueError):
+    # 1. Získame riadok pre danú akosť
+    vyber = df_materialy[(df_materialy['material'] == "PLAST") & (df_materialy['akost'] == akost)]
+    
+    if not vyber.empty:
+        raw_hustota = vyber['hustota'].values[0]
+        
+        # DEBUG: Odkomentuj tento riadok, ak chceš vidieť, čo presne v tom stĺpci je:
+        # st.write(f"DEBUG - Surová hodnota zo sheetu: '{raw_hustota}' (Typ: {type(raw_hustota)})")
+
+        # 2. Ošetrenie, ak je to už náhodou číslo (float/int) alebo ak je to text
+        if isinstance(raw_hustota, (int, float)):
+            hustota = float(raw_hustota)
+        else:
+            # Ak je to text, vyčistíme ho
+            clean_hustota = str(raw_hustota).replace(',', '.').replace('\xa0', '').replace(' ', '')
+            try:
+                hustota = float(clean_hustota)
+            except ValueError:
+                hustota = 0.0
+    else:
         hustota = 0.0
+
+# --- Pôvodná logika pre ostatné materiály zostáva ---
 elif material == "NEREZ":
     hustota = 8000.0
 elif material == "OCEĽ":
@@ -54,17 +71,4 @@ elif material == "FAREBNÉ KOVY":
     if akost.startswith("3.7"):
         hustota = 4500.0
     elif akost.startswith("3."):
-        hustota = 2900.0
-    elif akost.startswith("2."):
-        hustota = 9000.0
-
-# Ak je hustota stále 0 (nenájdená), užívateľ ju zadá ručne
-if hustota <= 0:
-    hustota = st.number_input("Hustota nebola nájdená. Zadajte ju ručne [kg/m3]", min_value=0.0, step=10.0, format="%.2f")
-
-# Finálna kontrola pred pokračovaním
-if hustota <= 0:
-    st.warning("Pre pokračovanie je potrebné zadať platnú hustotu materiálu.")
-    st.stop()
-else:
-    st.success(f"Použitá hustota: {hustota} kg/m3")
+        hustota
