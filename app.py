@@ -34,3 +34,27 @@ material = st.selectbox("Materiál", options=seznam_materialov)
 # 9. premenná - akost (filtrovaná podľa zvoleného materiálu)
 seznam_akosti = df_materialy[df_materialy['material'] == material]['akost'].unique()
 akost = st.selectbox("Akosť", options=seznam_akosti)
+
+# 10. premenná - hustota
+if material == "PLAST":
+    # Vytiahne hodnotu 'hustota' z riadku, kde sa zhoduje materiál aj akosť
+    hustota_val = df_materialy[(df_materialy['material'] == "PLAST") & (df_materialy['akost'] == akost)]['hustota'].values[0]
+    hustota = float(hustota_val)
+elif material == "NEREZ":
+    hustota = 8000.0
+elif material == "OCEĽ":
+    hustota = 7900.0
+elif material == "FAREBNÉ KOVY":
+    if akost.startswith("3.7"):
+        hustota = 4500.0
+    elif akost.startswith("3."):
+        hustota = 2900.0
+    elif akost.startswith("2."):
+        hustota = 9000.0
+    else:
+        hustota = 0.0 # Definujeme základnú hodnotu, ak by akosť nespadala do podmienok
+else:
+    hustota = 0.0
+
+# Zobrazenie premennej (voliteľné pre kontrolu, alebo ju môžeme nechať len v pamäti)
+st.write(f"Vypočítaná hustota: {hustota}")
