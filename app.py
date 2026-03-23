@@ -22,14 +22,13 @@ st.set_page_config(page_title="MECASYS AI - Final Tool", layout="wide")
 if 'kosik' not in st.session_state:
     st.session_state.kosik = []
 
-# Tvoj overený link na Google Apps Script
 WEBHOOK_URL = "https://script.google.com/macros/s/AKfycbx4Tt5BZa0Af9OUpXWLcgpZmOH5XM85wMXs30hv8LtA2atZ99Re7WShnEBWMKa6ctc_AQ/exec"
 
 @st.cache_data
 def load_data(url):
     try:
         df = pd.read_csv(url)
-        df.columns = df.columns.str.strip()  # Odstráni medzery z názvov stĺpcov
+        df.columns = df.columns.str.strip()
         return df
     except: return pd.DataFrame()
 
@@ -44,7 +43,7 @@ def load_ai_models():
         m2 = xgb.Booster(); m2.load_model(f"{p}xgb_model_cena.json")
         with open(f"{p}model_columns.pkl", 'rb') as f: assets["cols2"] = pickle.load(f)
         assets["m2"] = m2
-    except: st.error("⚠️ AI modely nenájdené v priečinku MECASYS_APP/")
+    except: st.error("⚠️ AI modely nenájdené.")
     return assets
 
 # Načítanie dát
@@ -77,23 +76,31 @@ with col1:
     df_f = df_mat_hustota[df_mat_hustota['material'] == v_mat]
     v_akost = st.selectbox("Akosť", sorted(df_f['akost'].unique()))
 with col2:
-    d = st.number_input("Priemer d [mm]", value=20.0, step=1.0)
-    l = st.number_input("Dĺžka l [mm]", value=50.0, step=1.0)
+    d = st.number_input("Priemer d [mm]", value=20.0, step=0.1)
+    l = st.number_input("Dĺžka l [mm]", value=50.0, step=0.1)
 with col3:
     pocet_kusov = st.number_input("Počet kusov [ks]", min_value=1, value=1)
     narocnost = st.select_slider("Náročnosť", options=["1","2","3","4","5"], value="3")
 
-# Výpočty geometrie
+# --- PRESNÉ VÝPOČTY (8 DESATINNÝCH MIEST) ---
 row_h = df_f[df_f['akost'] == v_akost]
 hustota = safe_num(row_h.iloc[0]['hustota']) if not row_h.empty else 7850.0
-hmotnost = hustota * (math.pi/4) * (d/1000)**2 * (l/1000)
-plocha_plasta = math.pi * d * l
 
-# Hľadanie v cenníku materiálu
+# Hmotnosť v kg na 8 desatinných miest
+hmotnost = float(hustota * (math.pi/4) * (d/1000)**2 * (l/1000))
+# Plocha plášťa v mm2 a prevod na dm2 na 8 desatinných miest
+plocha_plasta_mm2 = math.pi * d * l
+plocha_dm2 = float(plocha_plasta_mm2 / 10000)
+
+# Sidebar pre kontrolu
+st.sidebar.header("🔍 Röntgen súčiastky")
+st.sidebar.write(f"Váha: `{hmotnost:.8f}` kg")
+st.sidebar.write(f"Plocha: `{plocha_dm2:.88f}` dm²")
+
 res_m = df_cennik_mat[(df_cennik_mat['material']==v_mat)&(df_cennik_mat['akost']==v_akost)&(df_cennik_mat['d']>=d)].sort_values('d')
 cena_za_meter = safe_num(res_m.iloc[0]['cena']) if not res_m.empty else 0.0
 
-# --- 5. EKONOMICKÝ PANEL (Upravená Kooperácia) ---
+# --- 5. EKONOMICKÝ PANEL (LOGIKA KOOPERÁCIE) ---
 st.markdown("### 💰 Ekonomický prehľad položky")
 eco1, eco2, eco3 = st.columns(3)
 
@@ -105,33 +112,47 @@ with eco1:
 
 with eco2:
     st.write("**Kooperácia**")
-    m_clean = str(v_mat).strip()
-    # Očistíme názvy stĺpcov pre istotu
-    df_koop_cennik.columns = df_koop_cennik.columns.str.strip()
-    dostupne_row = df_koop_cennik[df_koop_cennik['material'].astype(str).str.strip() == m_clean]
-    dostupne_koop = dostupne_row['druh'].unique().tolist()
+    # Bod 1: Rozhodovacia logika
+    ma_koop = st.radio("Vyžaduje diel kooperáciu?", ["Nie", "Áno"], horizontal=True)
     
-    v_koop = st.selectbox("Druh kooperácie", ["Bez kooperácie"] + sorted(dostupne_koop))
-    
-    vyp_koop_ks = 0.0
-    if v_koop != "Bez kooperácie":
-        mk = dostupne_row[dostupne_row['druh'] == v_koop]
-        if not mk.empty:
-            r = mk.iloc[0]
-            tar = safe_num(r.get('tarifa', 0))
-            # Hľadáme min sadzbu pod rôznymi názvami kvôli Excelu
-            minz = safe_num(r.get('minimalna_zakazka', r.get('min_zakazka', r.get('minimalna sadzba', 0))))
-            jedn = str(r.get('jednotka', 'ks')).lower().strip()
+    naklad_koop_ks = 0.0
+    if ma_koop == "Áno":
+        m_clean = str(v_mat).strip()
+        df_koop_cennik.columns = df_koop_cennik.columns.str.strip()
+        
+        # Bod 2: Filtrovanie a vyhľadávanie
+        dostupne_row = df_koop_cennik[df_koop_cennik['material'].astype(str).str.strip() == m_clean]
+        
+        if not dostupne_row.empty:
+            v_druh = st.selectbox("Druh kooperácie", sorted(dostupne_row['druh'].unique().tolist()))
+            r = dostupne_row[dostupne_row['druh'] == v_druh].iloc[0]
             
-            if 'kg' in jedn: base = tar * hmotnost
-            elif 'dm2' in jedn: base = tar * (plocha_plasta / 10000)
-            else: base = tar
-            
-            # Logika Minimálky: max(základná cena, minimálna sadzba rozpočítaná na kusy)
-            vyp_koop_ks = max(base, minz / pocet_kusov)
-            st.caption(f"Info: Tarifa {tar}€ | Min. objednávka: {minz}€")
+            tarifa = safe_num(r.get('tarifa', 0))
+            jednotka = str(r.get('jednotka', 'ks')).lower().strip()
+            min_zakazka = safe_num(r.get('minimalna_zakazka', r.get('min_zakazka', 0)))
 
-    naklad_koop_ks = st.number_input("Kooperácia na kus [€]", value=float(vyp_koop_ks), format="%.3f")
+            # Bod 3: Výpočtové algoritmy (Odhad na 1 kus)
+            odhad_kooperacie = 0.0
+            if 'kg' in jednotka:
+                odhad_kooperacie = float(tarifa * hmotnost)
+            elif 'dm' in jednotka:
+                odhad_kooperacie = float(plocha_dm2 * tarifa)
+            else:
+                odhad_kooperacie = float(tarifa)
+
+            # Bod 4: Ochranná podmienka (Kontrola minimálnej zákazky)
+            celkom_seria = pocet_kusov * odhad_kooperacie
+
+            if celkom_seria < min_zakazka:
+                naklad_koop_ks = min_zakazka / pocet_kusov
+                st.warning(f"Aplikovaná minimálna zákazka: {min_zakazka} €")
+            else:
+                naklad_koop_ks = odhad_kooperacie
+                st.success(f"Použitá tarifa: {tarifa} €/{jednotka}")
+            
+            st.caption(f"Vypočítaný základ na kus: {odhad_kooperacie:.8f} €")
+
+    naklad_koop_ks = st.number_input("Kooperácia na kus [€]", value=float(naklad_koop_ks), format="%.4f")
 
 with eco3:
     st.write("**Súčet nákladov**")
@@ -141,15 +162,13 @@ with eco3:
 # --- 6. AI PREDIKCIA ---
 ai_cas, ai_cena = 0.0, 0.0
 if ai["m1"] and ai["m2"]:
-    # M1 - Čas
-    v1 = {'d': d, 'l': l, 'pocet_kusov': np.log1p(pocet_kusov), 'plocha_prierezu': (math.pi*d**2)/4, 'plocha_plasta': plocha_plasta, 'lojalita': lojalita, 'hustota': hustota, 'vstupne_naklady': vstupne_naklady}
+    v1 = {'d': d, 'l': l, 'pocet_kusov': np.log1p(pocet_kusov), 'plocha_prierezu': (math.pi*d**2)/4, 'plocha_plasta': plocha_plasta_mm2, 'lojalita': lojalita, 'hustota': hustota, 'vstupne_naklady': vstupne_naklady}
     for c in ai["cols1"]:
         if c not in v1: v1[c] = 0
         if c == f"material_{v_mat}": v1[c] = 1
         if c == f"narocnost_{narocnost}": v1[c] = 1
     ai_cas = float(np.expm1(ai["m1"].predict(xgb.DMatrix(pd.DataFrame([v1])[ai["cols1"]]))[0]))
     
-    # M2 - Cena
     v2 = {'cas': ai_cas, 'hmotnost': hmotnost, 'lojalita': lojalita, 'hustota': hustota, 'plocha_prierezu': (math.pi*d**2)/4}
     for c in ai["cols2"]:
         if c not in v2: v2[c] = 0
@@ -160,58 +179,20 @@ st.divider()
 r1, r2 = st.columns(2)
 r1.metric("Odhadovaný ČAS (AI)", f"{ai_cas:.2f} min")
 
-# LOGIKA OCHRANY ZISKU
-final_predajna_cena = ai_cena
-if ai_cena < vstupne_naklady:
-    st.error(f"⚠️ AI cena ({ai_cena:.2f} €) je pod nákladmi ({vstupne_naklady:.2f} €)!")
-    final_predajna_cena = vstupne_naklady * 1.30 # Návrh ceny s 30% maržou
-    st.warning(f"Navrhovaná bezpečná cena: {final_predajna_cena:.2f} €")
+# Zobrazenie odporúčanej ceny (Brzda je teraz vizuálne preč, ale cenu budeme sledovať)
+r2.metric("Odporúčaná CENA (AI)", f"{ai_cena:.2f} €/ks")
 
-r2.metric("Odporúčaná PREDAJNÁ CENA", f"{final_predajna_cena:.2f} €/ks")
-
-# --- 7. KOŠÍK A UKLADANIE ---
-if st.button("➕ PRIDAŤ DO ZOZNAMU PONUKY", type="primary", use_container_width=True):
+# --- 7. KOŠÍK ---
+if st.button("➕ PRIDAŤ DO PONUKY", type="primary", use_container_width=True):
     st.session_state.kosik.append({
-        "datum": datum_cp.strftime("%d.%m.%Y"),
-        "ponuka": cislo_cp,
-        "zakaznik": vyber_z,
-        "krajina": krajina,
-        "lojalita": lojalita,
-        "item": item_nazov,
-        "material": v_mat,
-        "akost": v_akost,
-        "d": d,
-        "l": l,
-        "hustota": hustota,
-        "hmotnost": hmotnost,
-        "narocnost": narocnost,
-        "jednotkova_mat": j_mat_potvrdena,
-        "naklad_mat_celkom": naklad_mat_ks,
-        "cena_kooperacia": naklad_koop_ks,
-        "vstupne_naklady": vstupne_naklady,
-        "ai_cas": ai_cas,
-        "ai_cena": final_predajna_cena,
-        "pocet_kusov": pocet_kusov,
-        "cena_polozky_spolu": final_predajna_cena * pocet_kusov
+        "datum": datum_cp.strftime("%d.%m.%Y"), "ponuka": cislo_cp, "zakaznik": vyber_z, "item": item_nazov, "material": v_mat, "pocet_kusov": pocet_kusov, "hmotnost_kg": round(hmotnost, 8), "vstupne_naklady": vstupne_naklady, "ai_cena": ai_cena, "cena_spolu": ai_cena * pocet_kusov
     })
     st.toast("Položka pridaná!")
 
 if st.session_state.kosik:
     st.divider()
     df_k = pd.DataFrame(st.session_state.kosik)
-    st.table(df_k[["item", "material", "pocet_kusov", "vstupne_naklady", "ai_cena", "cena_polozky_spolu"]])
-    
-    cb1, cb2 = st.columns(2)
-    with cb1:
-        if st.button("🗑️ VYMAZAŤ ZOZNAM"):
-            st.session_state.kosik = []; st.rerun()
-    with cb2:
-        if st.button("💾 ULOŽIŤ CELÚ PONUKU", type="primary"):
-            with st.spinner("Odosielam do Google Sheets..."):
-                try:
-                    for p in st.session_state.kosik:
-                        requests.post(WEBHOOK_URL, json=p)
-                    st.success("Dáta boli úspešne uložené!")
-                    st.session_state.kosik = []
-                except:
-                    st.error("Chyba pri ukladaní. Skontroluj internet alebo Apps Script link.")
+    st.table(df_k)
+    if st.button("💾 ULOŽIŤ DO GOOGLE SHEETS"):
+        for p in st.session_state.kosik: requests.post(WEBHOOK_URL, json=p)
+        st.success("Uložené!"); st.session_state.kosik = []
