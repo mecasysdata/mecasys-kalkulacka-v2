@@ -212,3 +212,10 @@ if cena_material > 0:
 else:
     st.warning("Zadajte cenu materiálu pre pokračovanie.")
     st.stop()
+
+# 15. PREMENNÁ - Hmotnosť kusu
+# Používame premenné d (6.) a l (7.), ktoré už máš definované vyššie
+hmotnost = hustota * (math.pi / 4) * (d / 1000)**2 * (l / 1000)
+
+# Zobrazenie výsledku pre kontrolu
+st.write(f"**Hmotnosť 1 kusu:** {hmotnost:.4f} kg")
