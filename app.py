@@ -37,32 +37,24 @@ seznam_akosti = df_materialy[df_materialy['material'] == material]['akost'].uniq
 akost = st.selectbox("Akosť", options=seznam_akosti)
 
 # 10. premenná - hustota 
+# 10. premenná - hustota
 hustota = 0.0
 
 if material == "PLAST":
-    # 1. Získame riadok pre danú akosť
     vyber = df_materialy[(df_materialy['material'] == "PLAST") & (df_materialy['akost'] == akost)]
     
     if not vyber.empty:
+        # Vytiahneme hodnotu zo stĺpca
         raw_hustota = vyber['hustota'].values[0]
         
-        # DEBUG: Odkomentuj tento riadok, ak chceš vidieť, čo presne v tom stĺpci je:
-        # st.write(f"DEBUG - Surová hodnota zo sheetu: '{raw_hustota}' (Typ: {type(raw_hustota)})")
-
-        # 2. Ošetrenie, ak je to už náhodou číslo (float/int) alebo ak je to text
-        if isinstance(raw_hustota, (int, float)):
-            hustota = float(raw_hustota)
-        else:
-            # Ak je to text, vyčistíme ho
-            clean_hustota = str(raw_hustota).replace(',', '.').replace('\xa0', '').replace(' ', '')
-            try:
-                hustota = float(clean_hustota)
-            except ValueError:
-                hustota = 0.0
+        # Ošetrenie: Prevod na string, výmena čiarky za bodku a odstránenie medzier
+        clean_hustota = str(raw_hustota).replace(',', '.').replace('\xa0', '').replace(' ', '')
+        
+        # Prevod na číslo - errors='coerce' spôsobí, že ak to zlyhá, vráti NaN
+        hustota = pd.to_numeric(clean_hustota, errors='coerce')
     else:
         hustota = 0.0
 
-# --- Pôvodná logika pre ostatné materiály zostáva ---
 elif material == "NEREZ":
     hustota = 8000.0
 elif material == "OCEĽ":
@@ -71,4 +63,17 @@ elif material == "FAREBNÉ KOVY":
     if akost.startswith("3.7"):
         hustota = 4500.0
     elif akost.startswith("3."):
-        hustota
+        hustota = 2900.0
+    elif akost.startswith("2."):
+        hustota = 9000.0
+
+# Ak sa hustotu nepodarilo určiť (je 0 alebo NaN), užívateľ ju zadá ručne
+if pd.isna(hustota) or hustota <= 0:
+    hustota = st.number_input("Hustota nebola nájdená. Zadajte ju ručne [kg/m3]", min_value=0.0, step=10.0, format="%.2f")
+
+# Explicitné zobrazenie hustoty na obrazovke
+if hustota > 0:
+    st.info(f"Aktuálna hustota: {hustota} kg/m3")
+else:
+    st.warning("Zadajte platnú hustotu pre pokračovanie.")
+    st.stop()
