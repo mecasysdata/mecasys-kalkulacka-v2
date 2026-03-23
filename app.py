@@ -43,14 +43,13 @@ df_materialy = load_data(sheet_url)
 seznam_materialov = sorted(df_materialy['material'].unique())
 material = st.selectbox("Materiál", options=seznam_materialov)
 
-# 9. PREMENNÁ - Akosť
-# K zoznamu zo sheetu pridáme na koniec možnosť "Iná akosť (zadať ručne)"
+# 9. PREMENNÁ - Akosť (Dostupná pre všetky materiály)
 seznam_akosti = list(sorted(df_materialy[df_materialy['material'] == material]['akost'].unique()))
 seznam_akosti.append("Iná akosť (zadať ručne)")
 
 akost_vyber = st.selectbox("Akosť", options=seznam_akosti)
 
-# Ak užívateľ zvolí ručné zadanie, otvorí sa textové pole
+# Ak užívateľ zvolí ručné zadanie akosti
 if akost_vyber == "Iná akosť (zadať ručne)":
     akost = st.text_input("Zadajte názov novej akosti:")
     if not akost:
@@ -62,9 +61,9 @@ else:
 # 10. PREMENNÁ - HUSTOTA
 hustota = 0.0
 
-# Logika hľadania v sheete beží len vtedy, ak nebolo zvolené ručné zadanie akosti
-if akost_vyber != "Iná akosť (zadať ručne)":
-    if material == "PLAST":
+# A. Logika pre PLAST (hľadá v sheete)
+if material == "PLAST":
+    if akost_vyber != "Iná akosť (zadať ručne)":
         vyber = df_materialy[(df_materialy['material'] == material) & (df_materialy['akost'] == akost)]
         if not vyber.empty:
             raw_val = str(vyber['hustota'].values[0]).strip()
@@ -74,20 +73,27 @@ if akost_vyber != "Iná akosť (zadať ručne)":
                 hustota = float(clean_val)
             except ValueError:
                 hustota = 0.0
-                
-    elif material == "NEREZ":
-        hustota = 8000.0
-    elif material == "OCEĽ":
-        hustota = 7900.0
-    elif material == "FAREBNÉ KOVY":
-        if akost.startswith("3.7"): hustota = 4500.0
-        elif akost.startswith("3."): hustota = 2900.0
-        elif akost.startswith("2."): hustota = 9000.0
+    # Ak je to nová akosť plastu, hustota zostane 0.0 a vypýta si ju ručne nižšie
 
-# Ak je akosť nová (ručne zadaná) alebo sa v sheete nenašla hustota (hustota je 0)
+# B. Logika pre ostatné materiály (podľa tvojich podmienok)
+elif material == "NEREZ":
+    hustota = 8000.0
+elif material == "OCEĽ":
+    hustota = 7900.0
+elif material == "FAREBNÉ KOVY":
+    if akost.startswith("3.7"):
+        hustota = 4500.0
+    elif akost.startswith("3."):
+        hustota = 2900.0
+    elif akost.startswith("2."):
+        hustota = 9000.0
+    # Ak nová akosť farebného kovu nezačína týmito číslami, hustota zostane 0.0
+
+# ZOBRAZENIE / RUČNÉ DOPLNENIE
 if hustota <= 0:
-    hustota = st.number_input("Hustota nenájdená. Zadajte manuálne [kg/m3]:", min_value=0.0, format="%.2f")
+    hustota = st.number_input("Hustota nenájdená alebo neznáma. Zadajte manuálne [kg/m3]:", min_value=0.0, format="%.2f")
 else:
+    # Ak sa hustota určila automaticky (napr. 7900 pre Oceľ), tu sa zobrazí a dá sa prepísať
     hustota = st.number_input("Hustota materiálu [kg/m3]:", value=hustota, format="%.2f")
 
 # Validácia
