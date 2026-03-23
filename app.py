@@ -241,51 +241,59 @@ plocha_plasta = math.pi * d * l
 # Zobrazenie výsledku
 st.write(f"**Plocha plášťa:** {plocha_plasta:.2f} mm²")
 
-# 19.PREMENNÁ --- VÝPOČET KOOPERÁCIE S LOGIKOU MINIMÁLNEJ OBJEDNÁVKY ---
 
-# 1. Filtrujeme druhy kooperácie podľa materiálu (8. premenná)
-dostupne_koop = df_koop[df_koop['material'] == material]
+#19. PREMENNÁ: KOOPERÁCIA (S MOŽNOSŤOU VYPNUTIA) ---
 
-cena_kooperacia = 0.0
+st.subheader("Kooperácia")
 
-if not dostupne_koop.empty:
-    zoznam_druhov = dostupne_koop['druh'].unique()
-    vybrany_druh = st.selectbox("Vyberte druh kooperácie", options=zoznam_druhov)
-    
-    # Vytiahneme riadok pre zvolený druh
-    riadok_koop = dostupne_koop[df_koop['druh'] == vybrany_druh].iloc[0]
-    
-    tarifa = float(riadok_koop['tarifa'])
-    jednotka = riadok_koop['jednotka']
-    minimum_objednavka = float(riadok_koop['minimum']) # Hodnota "minimum" zo sheetu
-    
-    # 2. PREDbežný výpočet ceny na kus podľa jednotky
-    vypocitana_jednotkova_cena = 0.0
-    
-    if jednotka == "kg":
-        vypocitana_jednotkova_cena = tarifa * hmotnost
-    elif jednotka == "dm2":
-        vypocitana_jednotkova_cena = tarifa * plocha_prierez_dm2
-    
-    # 3. LOGIKA MINIMÁLNEJ SUMY (tvoje zadanie)
-    # Vypočítame celkovú sumu za všetky kusy (pocet_kusov je 4. premenná)
-    celkova_suma_koop = pocet_kusov * vypocitana_jednotkova_cena
-    
-    if celkova_suma_koop < minimum_objednavka:
-        # Ak je súčet malý, cena na kus sa prepočíta z minima
-        cena_kooperacia = minimum_objednavka / pocet_kusov
-        st.warning(f"Pozor: Celková suma ({celkova_suma_koop:.2f} €) nedosiahla minimum objednávky ({minimum_objednavka:.2f} €).")
-        st.info(f"Cena kooperácie na kus bola navýšená na: **{cena_kooperacia:.2f} €**")
+# Pridáme prepínač, či je kooperácia vôbec potrebná
+je_kooperacia = st.checkbox("Vyžaduje tento diel kooperáciu?", value=False)
+
+cena_kooperacia = 0.0  # Predvolená hodnota
+
+if je_kooperacia:
+    # 1. Filtrujeme druhy kooperácie podľa materiálu (8. premenná)
+    dostupne_koop = df_koop[df_koop['material'] == material]
+
+    if not dostupne_koop.empty:
+        zoznam_druhov = dostupne_koop['druh'].unique()
+        vybrany_druh = st.selectbox("Vyberte druh kooperácie", options=zoznam_druhov)
+        
+        # Vytiahneme riadok pre zvolený druh
+        riadok_koop = dostupne_koop[df_koop['druh'] == vybrany_druh].iloc[0]
+        
+        tarifa = float(riadok_koop['tarifa'])
+        jednotka = riadok_koop['jednotka']
+        minimum_objednavka = float(riadok_koop['minimum'])
+        
+        # 2. Predbežný výpočet ceny na kus
+        vypocitana_jednotkova_cena = 0.0
+        if jednotka == "kg":
+            vypocitana_jednotkova_cena = tarifa * hmotnost
+        elif jednotka == "dm2":
+            vypocitana_jednotkova_cena = tarifa * plocha_prierez_dm2
+        
+        # 3. Logika minimálnej sumy objednávky
+        celkova_suma_koop = pocet_kusov * vypocitana_jednotkova_cena
+        
+        if celkova_suma_koop < minimum_objednavka:
+            cena_kooperacia = minimum_objednavka / pocet_kusov
+            st.warning(f"Celková suma ({celkova_suma_koop:.2f} €) je pod minimom ({minimum_objednavka:.2f} €).")
+        else:
+            cena_kooperacia = vypocitana_jednotkova_cena
+
+        st.metric("Cena kooperácie na kus", f"{cena_kooperacia:.2f} €")
     else:
-        # Ak je súčet vyšší ako minimum, zostáva pôvodná cena
-        cena_kooperacia = vypocitana_jednotkova_cena
-        st.success(f"Celková suma kooperácie ({celkova_suma_koop:.2f} €) spĺňa minimum.")
-
-    st.metric("Finálna cena kooperácie na kus", f"{cena_kooperacia:.2f} €")
-
+        st.info(f"Pre materiál '{material}' nie sú v tabuľke definované žiadne kooperácie.")
+        cena_kooperacia = 0.0
 else:
-    st.info(f"Pre materiál '{material}' nie je v tabuľke žiadna kooperácia.")
+    # Ak checkbox nie je zaškrtnutý
+    st.write("Diel nevyžaduje kooperáciu.")
     cena_kooperacia = 0.0
+
+# 20. PREMENNÁ - Vstupné náklady (zostáva rovnaká, teraz už s ošetrenou nulou)
+vstupne_naklady = cena_material + cena_kooperacia
+
 
 # 20. PREMENNÁ - Vstupné náklady na 1 kus
 # Sčítame cenu materiálu (14. premenná) a cenu kooperácie (19. premenná)
