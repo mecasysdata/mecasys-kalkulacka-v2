@@ -36,7 +36,6 @@ material = st.selectbox("Materiál", options=seznam_materialov)
 seznam_akosti = df_materialy[df_materialy['material'] == material]['akost'].unique()
 akost = st.selectbox("Akosť", options=seznam_akosti)
 
-# 10. premenná - hustota 
 # 10. premenná - hustota
 hustota = 0.0
 
@@ -44,17 +43,21 @@ if material == "PLAST":
     vyber = df_materialy[(df_materialy['material'] == "PLAST") & (df_materialy['akost'] == akost)]
     
     if not vyber.empty:
-        # Vytiahneme hodnotu zo stĺpca
         raw_hustota = vyber['hustota'].values[0]
         
-        # Ošetrenie: Prevod na string, výmena čiarky za bodku a odstránenie medzier
-        clean_hustota = str(raw_hustota).replace(',', '.').replace('\xa0', '').replace(' ', '')
+        # Agresívne čistenie: odstránime všetko okrem číslic, bodky a čiarky
+        clean_text = re.sub(r'[^0-9,.]', '', str(raw_hustota))
+        # Zameníme čiarku za bodku
+        clean_text = clean_text.replace(',', '.')
         
-        # Prevod na číslo - errors='coerce' spôsobí, že ak to zlyhá, vráti NaN
-        hustota = pd.to_numeric(clean_hustota, errors='coerce')
+        try:
+            hustota = float(clean_text)
+        except ValueError:
+            hustota = 0.0
     else:
         hustota = 0.0
 
+# ... (zvyšok logiky pre NEREZ, OCEĽ, KOVY zostáva rovnaký) ...
 elif material == "NEREZ":
     hustota = 8000.0
 elif material == "OCEĽ":
@@ -67,11 +70,11 @@ elif material == "FAREBNÉ KOVY":
     elif akost.startswith("2."):
         hustota = 9000.0
 
-# Ak sa hustotu nepodarilo určiť (je 0 alebo NaN), užívateľ ju zadá ručne
-if pd.isna(hustota) or hustota <= 0:
+# Ak sa hustotu nepodarilo určiť, užívateľ ju zadá ručne
+if hustota <= 0:
     hustota = st.number_input("Hustota nebola nájdená. Zadajte ju ručne [kg/m3]", min_value=0.0, step=10.0, format="%.2f")
 
-# Explicitné zobrazenie hustoty na obrazovke
+# Finálna kontrola
 if hustota > 0:
     st.info(f"Aktuálna hustota: {hustota} kg/m3")
 else:
