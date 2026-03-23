@@ -100,3 +100,64 @@ else:
 if hustota <= 0:
     st.warning("Pre pokračovanie je potrebné určiť hustotu materiálu.")
     st.stop()
+# --- NAČÍTANIE SHEETU ZÁKAZNÍKOV ---
+sheet_zakaznici_url = "https://docs.google.com/spreadsheets/d/e/2PACX-1vRfPBZ4TCpQyiqybU0ADu3AMwHCi2qOKifQAOnnTWnorVNJ1SVxtN6zJzXthOxCVwtXWp__Bp_-nto0/pub?gid=324957857&single=true&output=csv"
+
+@st.cache_data
+def load_customers(url):
+    data = pd.read_csv(url)
+    data.columns = data.columns.str.strip()
+    # Vyčistíme textové stĺpce
+    for col in data.columns:
+        if data[col].dtype == 'object':
+            data[col] = data[col].astype(str).str.strip()
+    return data
+
+df_zakaznici = load_customers(sheet_zakaznici_url)
+
+st.subheader("Informácie o zákazníkovi")
+
+# 11. PREMENNÁ - zakaznik
+# Do zoznamu pridáme možnosť pre nového zákazníka
+seznam_zakaznikov = list(sorted(df_zakaznici['zakaznik'].unique()))
+seznam_zakaznikov.append("Nový zákazník (zadať ručne)")
+
+zakaznik_vyber = st.selectbox("Vyberte zákazníka", options=seznam_zakaznikov)
+
+# Inicializácia premenných
+zakaznik = ""
+krajina = ""
+lojalita = 0.0
+
+if zakaznik_vyber == "Nový zákazník (zadať ručne)":
+    # Ručné zadanie mena a krajiny
+    zakaznik = st.text_input("Zadajte meno nového zákazníka:")
+    krajina = st.text_input("Zadajte krajinu zákazníka:")
+    # 13. PREMENNÁ - lojalita pre nového zákazníka je automaticky 0.5
+    lojalita = 0.5
+    
+    if not zakaznik or not krajina:
+        st.warning("Prosím, vyplňte meno aj krajinu zákazníka.")
+        st.stop()
+else:
+    # 11. PREMENNÁ - zakaznik (zo zoznamu)
+    zakaznik = zakaznik_vyber
+    data_zakaznika = df_zakaznici[df_zakaznici['zakaznik'] == zakaznik]
+    
+    if not data_zakaznika.empty:
+        # 12. PREMENNÁ - krajina (zo sheetu)
+        krajina = str(data_zakaznika['krajina'].values[0])
+        
+        # 13. PREMENNÁ - lojalita (zo sheetu)
+        raw_lojalita = str(data_zakaznika['lojalita'].values[0])
+        clean_lojalita = re.sub(r'[^0-9.]', '', raw_lojalita.replace(',', '.'))
+        try:
+            lojalita = float(clean_lojalita)
+        except ValueError:
+            lojalita = 0.0
+    else:
+        st.error("Dáta sa nepodarilo načítať.")
+        st.stop()
+
+# Zobrazenie výsledných hodnôt pre kontrolu
+st.info(f"Zákazník: **{zakaznik}** | Krajina: **{krajina}** | Lojalita: **{lojalita}**")
