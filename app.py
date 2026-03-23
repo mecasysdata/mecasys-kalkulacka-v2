@@ -44,46 +44,53 @@ seznam_materialov = sorted(df_materialy['material'].unique())
 material = st.selectbox("Materiál", options=seznam_materialov)
 
 # 9. PREMENNÁ - Akosť
-seznam_akosti = sorted(df_materialy[df_materialy['material'] == material]['akost'].unique())
-akost = st.selectbox("Akosť", options=seznam_akosti)
+# K zoznamu zo sheetu pridáme na koniec možnosť "Iná akosť (zadať ručne)"
+seznam_akosti = list(sorted(df_materialy[df_materialy['material'] == material]['akost'].unique()))
+seznam_akosti.append("Iná akosť (zadať ručne)")
 
-# 10. PREMENNÁ - HUSTOTA (opravená pre formát 1,500.00)
+akost_vyber = st.selectbox("Akosť", options=seznam_akosti)
+
+# Ak užívateľ zvolí ručné zadanie, otvorí sa textové pole
+if akost_vyber == "Iná akosť (zadať ručne)":
+    akost = st.text_input("Zadajte názov novej akosti:")
+    if not akost:
+        st.warning("Prosím, zadajte názov akosti.")
+        st.stop()
+else:
+    akost = akost_vyber
+
+# 10. PREMENNÁ - HUSTOTA
 hustota = 0.0
 
-if material == "PLAST":
-    vyber = df_materialy[(df_materialy['material'] == material) & (df_materialy['akost'] == akost)]
-    if not vyber.empty:
-        # Získame hodnotu a preistotu ju zbavíme všetkých bielych znakov (medzier)
-        raw_val = str(vyber['hustota'].values[0]).strip()
-        
-        # 1. Odstránime čiarku (oddeľovač tisícov)
-        temp_val = raw_val.replace(',', '')
-        
-        # 2. Ponecháme len číslice a bodku (desatinnú)
-        clean_val = re.sub(r'[^0-9.]', '', temp_val)
-        
-        try:
-            hustota = float(clean_val)
-        except ValueError:
-            hustota = 0.0
-            
-elif material == "NEREZ":
-    hustota = 8000.0
-elif material == "OCEĽ":
-    hustota = 7900.0
-elif material == "FAREBNÉ KOVY":
-    if akost.startswith("3.7"): hustota = 4500.0
-    elif akost.startswith("3."): hustota = 2900.0
-    elif akost.startswith("2."): hustota = 9000.0
+# Logika hľadania v sheete beží len vtedy, ak nebolo zvolené ručné zadanie akosti
+if akost_vyber != "Iná akosť (zadať ručne)":
+    if material == "PLAST":
+        vyber = df_materialy[(df_materialy['material'] == material) & (df_materialy['akost'] == akost)]
+        if not vyber.empty:
+            raw_val = str(vyber['hustota'].values[0]).strip()
+            temp_val = raw_val.replace(',', '')
+            clean_val = re.sub(r'[^0-9.]', '', temp_val)
+            try:
+                hustota = float(clean_val)
+            except ValueError:
+                hustota = 0.0
+                
+    elif material == "NEREZ":
+        hustota = 8000.0
+    elif material == "OCEĽ":
+        hustota = 7900.0
+    elif material == "FAREBNÉ KOVY":
+        if akost.startswith("3.7"): hustota = 4500.0
+        elif akost.startswith("3."): hustota = 2900.0
+        elif akost.startswith("2."): hustota = 9000.0
 
-# ZOBRAZENIE / RUČNÉ ZADANIE
+# Ak je akosť nová (ručne zadaná) alebo sa v sheete nenašla hustota (hustota je 0)
 if hustota <= 0:
     hustota = st.number_input("Hustota nenájdená. Zadajte manuálne [kg/m3]:", min_value=0.0, format="%.2f")
 else:
-    # Ak sa našla, urobíme ju editovateľnú (užívateľ ju vidí a môže zmeniť)
     hustota = st.number_input("Hustota materiálu [kg/m3]:", value=hustota, format="%.2f")
 
-# Validácia pred pokračovaním
+# Validácia
 if hustota <= 0:
     st.warning("Pre pokračovanie je potrebné určiť hustotu materiálu.")
     st.stop()
