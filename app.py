@@ -3,6 +3,10 @@ import pandas as pd
 import math
 from datetime import date
 import re
+import numpy as np
+import pickle
+from xgboost import XGBRegressor
+
 # 1. premenná - dátum
 datum = st.date_input("Dátum", value=date.today())
 
@@ -321,3 +325,53 @@ col1.metric("Materiál", f"{cena_material:.2f} €")
 col2.metric("Kooperácia", f"{cena_kooperacia:.2f} €")
 
 st.metric("CELKOVÉ VSTUPNÉ NÁKLADY (na kus)", f"{vstupne_naklady:.2f} €")
+
+# --- 21. PREMENNÁ: MODEL 1 (PREDIKCIA ČASU) ---
+st.subheader("Predikcia výrobného času (Model 1)")
+
+try:
+    # 1. Načítanie "mozgu" a "mapy" modelu
+    with open('stlpce_modelu.pkl', 'rb') as f:
+        model_columns = pickle.load(f)
+
+    loaded_model = XGBRegressor()
+    loaded_model.load_model('finalny_model.json')
+
+    # 2. Vytvorenie prázdneho riadku s presnou štruktúrou tréningových dát
+    input_df = pd.DataFrame(0, index=[0], columns=model_columns)
+
+    # 3. TRANSFORMÁCIA VSTUPOV (Logaritmus počtu kusov)
+    # Keďže si trénovala na log(pocet_kusov), musíme to urobiť aj tu
+    input_df['pocet_kusov'] = np.log1p(pocet_kusov)
+    
+    # Ostatné číselné vstupy (tie logaritmované neboli)
+    input_df['d'] = d
+    input_df['l'] = l
+    input_df['plocha_prierezu'] = plocha_prierezu
+    input_df['plocha_plasta'] = plocha_plasta
+
+    # 4. KATEGÓRIE (One-Hot Encoding)
+    # Priradenie jednotky k zvolenému materiálu, akosti a náročnosti
+    for prefix, value in {'material': material, 'akost': akost, 'narocnost': narocnost}.items():
+        col_name = f"{prefix}_{value}"
+        if col_name in input_df.columns:
+            input_df[col_name] = 1
+
+    # 5. PREDIKCIA (Výsledok je v logaritme, lebo si tak trénovala cieľovú premennú y)
+    log_predikcia = loaded_model.predict(input_df)[0]
+
+    # 6. INVERZNÁ TRANSFORMÁCIA (Z logaritmu na minúty)
+    # Toto vytvorí premennú 'cas', ktorú potrebuješ pre Model 2
+    cas = np.expm1(log_predikcia)
+
+    # 7. ZOBRAZENIE
+    if cas > 0:
+        st.success(f"Výrobný čas bol úspešne predikovaný.")
+        c1, c2 = st.columns(2)
+        c1.metric("Čas na 1 kus", f"{cas:.2f} min")
+        c2.metric("Celkový čas (dávka)", f"{cas * pocet_kusov:.1f} min")
+    else:
+        st.error("Model vrátil neplatný čas. Skontrolujte vstupy.")
+
+except Exception as e:
+    st.warning(f"Model 1 zatiaľ nie je pripravený alebo chýbajú súbory. (Chyba: {e})")
