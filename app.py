@@ -226,3 +226,10 @@ plocha_prierezu = (math.pi * d**2) / 4
 
 # Zobrazenie výsledku
 st.write(f"**Plocha prierezu:** {plocha_prierezu:.2f} mm²")
+
+# 17. PREMENNÁ - Plocha prierezu v dm2
+# Prevod z mm2 na dm2 (delíme 10 000)
+plocha_prierez_dm2 = plocha_prierezu / 10000
+
+# Zobrazenie výsledku
+st.write(f"**Plocha prierezu v dm²:** {plocha_prierez_dm2:.4f} dm²")
