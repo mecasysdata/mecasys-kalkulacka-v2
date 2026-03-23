@@ -370,3 +370,61 @@ try:
 except Exception as e:
     # Ak súbory stále nevidí, vypíše sa presná cesta, ktorú Python hľadá
     st.warning(f"Model 1 zatiaľ nie je pripravený alebo chýbajú súbory. (Chyba: {e})")
+
+# --- 22. PREMENNÁ: MODEL 2 (PREDIKCIA CENY) ---
+st.subheader("Predikcia výslednej ceny (Model M2)")
+
+# Používame tvoju 12. premennú 'krajina'
+# Ak ju máš v kóde definovanú vyššie, tu ju len prevezmeme.
+
+try:
+    # 1. Načítanie súborov z podpriecinka MECASYS_APP
+    # model_columns.pkl (stĺpce) a xgb_model_cena.json (model)
+    with open('MECASYS_APP/model_columns.pkl', 'rb') as f:
+        m2_columns = pickle.load(f)
+
+    model_m2 = XGBRegressor()
+    model_m2.load_model('MECASYS_APP/xgb_model_cena.json')
+
+    # 2. Príprava vstupného riadku (všetko na nulu)
+    input_m2 = pd.DataFrame(0, index=[0], columns=m2_columns)
+
+    # 3. Naplnenie číselných hodnôt (Inžiniering)
+    # cas (z Modelu 1 v minútach), hmotnost, plocha_prierezu a hustota
+    if 'cas' in input_m2.columns:
+        input_m2['cas'] = cas
+    
+    if 'hmotnost' in input_m2.columns:
+        input_m2['hmotnost'] = hmotnost
+        
+    if 'plocha_prierezu' in input_m2.columns:
+        input_m2['plocha_prierezu'] = plocha_prierezu
+        
+    if 'hustota' in input_m2.columns:
+        input_m2['hustota'] = hustota
+
+    # 4. Kategorické vstupy (Krajina z 12. premennej)
+    # Model pri One-Hot Encodingu očakáva stĺpec v tvare 'krajina_Názov'
+    col_krajina = f"krajina_{krajina}"
+    
+    if col_krajina in input_m2.columns:
+        input_m2[col_krajina] = 1
+    else:
+        # Ak by užívateľ zadal krajinu, ktorú model nikdy nevidel, 
+        # model bude predikovať "neutrálnu" cenu (všetky krajiny = 0)
+        pass
+
+    # 5. Predikcia (Inverzná transformácia logaritmu)
+    log_pred_m2 = model_m2.predict(input_m2)[0]
+    predikovana_cena_m2 = np.expm1(log_pred_m2)
+
+    # 6. Zobrazenie výsledku
+    if predikovana_cena_m2 > 0:
+        st.success(f"Model M2 úspešne predikoval cenu pre krajinu: **{krajina}**")
+        st.metric("Predikovaná trhová cena", f"{predikovana_cena_m2:.2f} €")
+    else:
+        st.error("Model M2 vrátil neplatný výsledok.")
+
+except Exception as e:
+    # Ak súbory na Gite nie sú v správnom priečinku, tu uvidíš chybu
+    st.warning(f"Model M2 nie je k dispozícii. (Chyba: {e})")
