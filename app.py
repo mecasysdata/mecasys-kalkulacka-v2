@@ -36,11 +36,16 @@ material = st.selectbox("Materiál", options=seznam_materialov)
 seznam_akosti = df_materialy[df_materialy['material'] == material]['akost'].unique()
 akost = st.selectbox("Akosť", options=seznam_akosti)
 
-# 10. premenná - hustota (ZJEDNODUŠENÁ LOGIKA)
+# 10. premenná - hustota 
+hustota = 0.0
+
 if material == "PLAST":
-    hustota_val = df_materialy[(df_materialy['material'] == "PLAST") & (df_materialy['akost'] == akost)]['hustota'].values[0]
-    # Keďže sme to nastavili pri pd.read_csv, hustota by už mala byť číslo (float)
-    hustota = float(hustota_val)
+    try:
+        raw_hustota = df_materialy[(df_materialy['material'] == "PLAST") & (df_materialy['akost'] == akost)]['hustota'].values[0]
+        clean_hustota = str(raw_hustota).replace(',', '.').replace('\xa0', '').replace(' ', '')
+        hustota = float(clean_hustota)
+    except (IndexError, ValueError):
+        hustota = 0.0
 elif material == "NEREZ":
     hustota = 8000.0
 elif material == "OCEĽ":
@@ -52,7 +57,14 @@ elif material == "FAREBNÉ KOVY":
         hustota = 2900.0
     elif akost.startswith("2."):
         hustota = 9000.0
-    else:
-        hustota = 0.0
+
+# Ak je hustota stále 0 (nenájdená), užívateľ ju zadá ručne
+if hustota <= 0:
+    hustota = st.number_input("Hustota nebola nájdená. Zadajte ju ručne [kg/m3]", min_value=0.0, step=10.0, format="%.2f")
+
+# Finálna kontrola pred pokračovaním
+if hustota <= 0:
+    st.warning("Pre pokračovanie je potrebné zadať platnú hustotu materiálu.")
+    st.stop()
 else:
-    hustota = 0.0
+    st.success(f"Použitá hustota: {hustota} kg/m3")
