@@ -1,5 +1,6 @@
 import streamlit as st
 import pandas as pd
+import re 
 from datetime import date
 
 # 1. premenná - dátum
@@ -36,13 +37,26 @@ seznam_akosti = df_materialy[df_materialy['material'] == material]['akost'].uniq
 akost = st.selectbox("Akosť", options=seznam_akosti)
 
 # 10. premenná - hustota
+import streamlit as st
+import pandas as pd
+from datetime import date
+import re  # Pridaný import pre vyčistenie textu
+
+# ... (tvoje premenné 1 až 9 zostávajú rovnaké) ...
+
+# 10. premenná - hustota
 if material == "PLAST":
-    # Vytiahne hodnotu 'hustota', odstráni medzery a nahradí čiarku bodkou pre správny prevod na float
+    # Vytiahne hodnotu 'hustota' zo sheetu
     hustota_val = df_materialy[(df_materialy['material'] == "PLAST") & (df_materialy['akost'] == akost)]['hustota'].values[0]
     
-    # Ošetrenie formátu (odstránenie netlačiteľných znakov, medzier a zámena , za .)
-    hustota_clean = str(hustota_val).replace(',', '.').replace('\xa0', '').replace(' ', '')
+    # Prevod na string a nahradenie čiarky bodkou
+    hustota_temp = str(hustota_val).replace(',', '.')
+    
+    # Ponecháme IBA číslice a bodku, všetko ostatné (medzery, znaky) zmizne
+    hustota_clean = re.sub(r'[^0-9.]', '', hustota_temp)
+    
     hustota = float(hustota_clean)
+    
 elif material == "NEREZ":
     hustota = 8000.0
 elif material == "OCEĽ":
@@ -60,3 +74,4 @@ else:
     hustota = 0.0
 
 st.write(f"Vypočítaná hustota: {hustota}")
+
