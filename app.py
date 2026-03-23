@@ -263,55 +263,44 @@ def load_koop_cennik(url):
 
 df_koop_cennik = load_koop_cennik(sheet_koop_cennik_url)
 
-# --- 19. PREMENNÁ: CENA KOOPERÁCIE ---
+# --- 19. PREMENNÁ: KOOPERÁCIA (OPRAVENÁ) ---
 st.subheader("Kooperácia")
 
-# Prepínač pre aktiváciu
-je_kooperacia = st.checkbox("Vyžaduje tento diel kooperáciu?", value=False, key="chk_kooperacia_final")
-
-cena_kooperacia = 0.0  # Predvolená hodnota
+je_kooperacia = st.checkbox("Vyžaduje tento diel kooperáciu?", value=False, key="chk_koop_final")
+cena_kooperacia = 0.0 
 
 if je_kooperacia:
-    # 1. Výber druhu kooperácie zo stĺpca 'druh'
+    # Používame df_koop_cennik (názov musí sedieť s tým, čo si načítala cez pandas)
     zoznam_druhov = sorted(df_koop_cennik['druh'].unique())
     vybrany_druh = st.selectbox("Vyberte druh kooperácie", options=zoznam_druhov, key="sb_druh_final")
     
-    # 2. Filtrovanie materiálov dostupných pre tento druh
     mats_pre_druh = sorted(df_koop_cennik[df_koop_cennik['druh'] == vybrany_druh]['material'].unique())
     vybrany_mat_koop = st.selectbox("Potvrďte materiál kooperácie", options=mats_pre_druh, key="sb_mat_final")
     
-    # 3. Získanie dát z riadku (tarifa, jednotka, minimum)
+    # Vytiahnutie konkrétneho riadku
     riadok_koop = df_koop_cennik[(df_koop_cennik['druh'] == vybrany_druh) & (df_koop_cennik['material'] == vybrany_mat_koop)].iloc[0]
     
     tarifa = float(riadok_koop['tarifa'])
-    jednotka = str(riadok_koop['jednotka']).lower()
+    jednotka = str(riadok_koop['jednotka']).strip().lower()
     minimum_objednavka = float(riadok_koop['minimum'])
     
-    # 4. Základný výpočet na 1 kus
     vypocitana_jednotkova_cena = 0.0
     if jednotka == "kg":
-        vypocitana_jednotkova_cena = tarifa * hmotnost  # 15. premenná
+        vypocitana_jednotkova_cena = tarifa * hmotnost
     elif jednotka == "dm2":
-        vypocitana_jednotkova_cena = tarifa * plocha_prierez_dm2  # 17. premenná
-    else:
-        st.error(f"Chyba: Jednotka '{jednotka}' nie je v systéme podporovaná (len kg/dm2).")
-
-    # 5. LOGIKA MINIMÁLNEJ OBJEDNÁVKY
-    celkova_suma_v_davke = pocet_kusov * vypocitana_jednotkova_cena # pocet_kusov je 4. premenná
+        vypocitana_jednotkova_cena = tarifa * plocha_prierez_dm2
+        
+    celkova_suma_v_davke = pocet_kusov * vypocitana_jednotkova_cena
     
     if celkova_suma_v_davke < minimum_objednavka:
-        # Výpočet ceny na kus rozpočítaním minima
         cena_kooperacia = minimum_objednavka / pocet_kusov
-        st.warning(f"Pozor: Celková suma dávky ({celkova_suma_v_davke:.2f} €) nedosiahla minimum ({minimum_objednavka:.2f} €). Cena na kus bola upravená.")
+        st.warning(f"Suma kooperácie nedosiahla limit. Cena na kus bola prepočítaná z minima.")
     else:
-        # Použije sa štandardná tarifa
         cena_kooperacia = vypocitana_jednotkova_cena
-        st.success(f"Celková suma kooperácie ({celkova_suma_v_davke:.2f} €) je v poriadku.")
 
-    st.metric("Finálna cena kooperácie (na 1 ks)", f"{cena_kooperacia:.2f} €")
-
+    st.metric("Výsledná cena kooperácie na kus", f"{cena_kooperacia:.2f} €")
 else:
-    st.info("Diel nevyžaduje kooperáciu.")
+    st.info("Diel je bez kooperácie.")
     cena_kooperacia = 0.0
 
 # 20. PREMENNÁ - Vstupné náklady na 1 kus
@@ -330,48 +319,43 @@ st.metric("CELKOVÉ VSTUPNÉ NÁKLADY (na kus)", f"{vstupne_naklady:.2f} €")
 st.subheader("Predikcia výrobného času (Model 1)")
 
 try:
-    # 1. Načítanie "mozgu" a "mapy" modelu
-    with open('stlpce_modelu.pkl', 'rb') as f:
+    # 1. Načítanie súborov z podpriecinka MECASYS_APP
+    # Upravené cesty k súborom:
+    with open('MECASYS_APP/stlpce_modelu.pkl', 'rb') as f:
         model_columns = pickle.load(f)
 
     loaded_model = XGBRegressor()
-    loaded_model.load_model('finalny_model.json')
+    loaded_model.load_model('MECASYS_APP/finalny_model.json')
 
-    # 2. Vytvorenie prázdneho riadku s presnou štruktúrou tréningových dát
+    # 2. Vytvorenie prázdneho riadku
     input_df = pd.DataFrame(0, index=[0], columns=model_columns)
 
-    # 3. TRANSFORMÁCIA VSTUPOV (Logaritmus počtu kusov)
-    # Keďže si trénovala na log(pocet_kusov), musíme to urobiť aj tu
+    # 3. Transformácia vstupov
     input_df['pocet_kusov'] = np.log1p(pocet_kusov)
-    
-    # Ostatné číselné vstupy (tie logaritmované neboli)
     input_df['d'] = d
     input_df['l'] = l
     input_df['plocha_prierezu'] = plocha_prierezu
     input_df['plocha_plasta'] = plocha_plasta
 
-    # 4. KATEGÓRIE (One-Hot Encoding)
-    # Priradenie jednotky k zvolenému materiálu, akosti a náročnosti
+    # 4. Kategórie (One-Hot Encoding)
     for prefix, value in {'material': material, 'akost': akost, 'narocnost': narocnost}.items():
         col_name = f"{prefix}_{value}"
         if col_name in input_df.columns:
             input_df[col_name] = 1
 
-    # 5. PREDIKCIA (Výsledok je v logaritme, lebo si tak trénovala cieľovú premennú y)
+    # 5. Predikcia a inverzná transformácia
     log_predikcia = loaded_model.predict(input_df)[0]
-
-    # 6. INVERZNÁ TRANSFORMÁCIA (Z logaritmu na minúty)
-    # Toto vytvorí premennú 'cas', ktorú potrebuješ pre Model 2
     cas = np.expm1(log_predikcia)
 
-    # 7. ZOBRAZENIE
+    # 6. Zobrazenie
     if cas > 0:
         st.success(f"Výrobný čas bol úspešne predikovaný.")
         c1, c2 = st.columns(2)
         c1.metric("Čas na 1 kus", f"{cas:.2f} min")
-        c2.metric("Celkový čas (dávka)", f"{cas * pocet_kusov:.1f} min")
+        c2.metric("Celkový čas dávky", f"{cas * pocet_kusov:.1f} min")
     else:
-        st.error("Model vrátil neplatný čas. Skontrolujte vstupy.")
+        st.error("Model vrátil neplatný čas.")
 
 except Exception as e:
+    # Ak súbory stále nevidí, vypíše sa presná cesta, ktorú Python hľadá
     st.warning(f"Model 1 zatiaľ nie je pripravený alebo chýbajú súbory. (Chyba: {e})")
