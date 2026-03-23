@@ -244,63 +244,71 @@ plocha_plasta = math.pi * d * l
 # Zobrazenie výsledku
 st.write(f"**Plocha plášťa:** {plocha_plasta:.2f} mm²")
 
-# --- 19. PREMENNÁ: KOOPERÁCIA (ZJEDNODUŠENÝ A STABILNÝ VÝBER) ---
+# --- NOVÉ NAČÍTANIE SHEETU KOOPERÁCIE (GID 1180392224) ---
+sheet_koop_cennik_url = "https://docs.google.com/spreadsheets/d/e/2PACX-1vRfPBZ4TCpQyiqybU0ADu3AMwHCi2qOKifQAOnnTWnorVNJ1SVxtN6zJzXthOxCVwtXWp__Bp_-nto0/pub?gid=1180392224&single=true&output=csv"
+
+@st.cache_data
+def load_koop_cennik(url):
+    data = pd.read_csv(url)
+    data.columns = data.columns.str.strip()
+    # Vyčistíme texty pre presné párovanie
+    for col in ['druh', 'material', 'jednotka']:
+        if col in data.columns:
+            data[col] = data[col].astype(str).str.strip()
+    return data
+
+df_koop_cennik = load_koop_cennik(sheet_koop_cennik_url)
+
+# --- 19. PREMENNÁ: CENA KOOPERÁCIE ---
 st.subheader("Kooperácia")
 
-# Prepínač pre aktiváciu kooperácie
-je_kooperacia = st.checkbox("Vyžaduje tento diel kooperáciu?", value=False)
+# Prepínač pre aktiváciu
+je_kooperacia = st.checkbox("Vyžaduje tento diel kooperáciu?", value=False, key="chk_kooperacia_final")
 
 cena_kooperacia = 0.0  # Predvolená hodnota
 
 if je_kooperacia:
-    # 1. Používateľ si najprv vyberie druh kooperácie priamo z tabuľky df_koop
-    zoznam_druhov = sorted(df_koop['druh'].unique())
-    vybrany_druh = st.selectbox("Vyberte druh kooperácie", options=zoznam_druhov)
+    # 1. Výber druhu kooperácie zo stĺpca 'druh'
+    zoznam_druhov = sorted(df_koop_cennik['druh'].unique())
+    vybrany_druh = st.selectbox("Vyberte druh kooperácie", options=zoznam_druhov, key="sb_druh_final")
     
-    # 2. Na základe vybraného druhu ponúkneme dostupné materiály v rámci tejto kooperácie
-    mats_pre_druh = sorted(df_koop[df_koop['druh'] == vybrany_druh]['material'].unique())
-    vybrany_mat_koop = st.selectbox("Potvrďte materiál pre zvolenú kooperáciu", options=mats_pre_druh)
+    # 2. Filtrovanie materiálov dostupných pre tento druh
+    mats_pre_druh = sorted(df_koop_cennik[df_koop_cennik['druh'] == vybrany_druh]['material'].unique())
+    vybrany_mat_koop = st.selectbox("Potvrďte materiál kooperácie", options=mats_pre_druh, key="sb_mat_final")
     
-    # 3. Vytiahnutie riadku s tarifou a minimom
-    riadok_koop = df_koop[(df_koop['druh'] == vybrany_druh) & (df_koop['material'] == vybrany_mat_koop)].iloc[0]
+    # 3. Získanie dát z riadku (tarifa, jednotka, minimum)
+    riadok_koop = df_koop_cennik[(df_koop_cennik['druh'] == vybrany_druh) & (df_koop_cennik['material'] == vybrany_mat_koop)].iloc[0]
     
     tarifa = float(riadok_koop['tarifa'])
-    jednotka = str(riadok_koop['jednotka']).strip().lower()
+    jednotka = str(riadok_koop['jednotka']).lower()
     minimum_objednavka = float(riadok_koop['minimum'])
     
-    # 4. PREDbežný výpočet ceny na 1 kus podľa jednotky
+    # 4. Základný výpočet na 1 kus
     vypocitana_jednotkova_cena = 0.0
-    
     if jednotka == "kg":
-        # Používa tvoju 15. premennú 'hmotnost'
-        vypocitana_jednotkova_cena = tarifa * hmotnost
+        vypocitana_jednotkova_cena = tarifa * hmotnost  # 15. premenná
     elif jednotka == "dm2":
-        # Používa tvoju 17. premennú 'plocha_prierez_dm2'
-        vypocitana_jednotkova_cena = tarifa * plocha_prierez_dm2
+        vypocitana_jednotkova_cena = tarifa * plocha_prierez_dm2  # 17. premenná
     else:
-        st.error(f"Neznáma jednotka '{jednotka}' v tabuľke. Podporované sú 'kg' alebo 'dm2'.")
-    
-    # 5. LOGIKA MINIMÁLNEJ SUMY OBJEDNÁVKY (ZACHOVANÁ)
-    # Celková suma za celú dávku (pocet_kusov je tvoja 4. premenná)
-    celkova_suma_v_davke = pocet_kusov * vypocitana_jednotkova_cena
+        st.error(f"Chyba: Jednotka '{jednotka}' nie je v systéme podporovaná (len kg/dm2).")
+
+    # 5. LOGIKA MINIMÁLNEJ OBJEDNÁVKY
+    celkova_suma_v_davke = pocet_kusov * vypocitana_jednotkova_cena # pocet_kusov je 4. premenná
     
     if celkova_suma_v_davke < minimum_objednavka:
-        # Ak je suma pod limitom dodávateľa, cena na kus sa rozpočíta z minima
+        # Výpočet ceny na kus rozpočítaním minima
         cena_kooperacia = minimum_objednavka / pocet_kusov
-        st.warning(f"Celková suma ({celkova_suma_v_davke:.2f} €) je pod minimom ({minimum_objednavka:.2f} €). Jednotková cena bola navýšená.")
+        st.warning(f"Pozor: Celková suma dávky ({celkova_suma_v_davke:.2f} €) nedosiahla minimum ({minimum_objednavka:.2f} €). Cena na kus bola upravená.")
     else:
-        # Ak je suma nad minimom, platí štandardná cena
+        # Použije sa štandardná tarifa
         cena_kooperacia = vypocitana_jednotkova_cena
-        st.success(f"Celková suma kooperácie ({celkova_suma_v_davke:.2f} €) spĺňa limit dodávateľa.")
+        st.success(f"Celková suma kooperácie ({celkova_suma_v_davke:.2f} €) je v poriadku.")
 
-    st.metric("Finálna cena kooperácie na kus", f"{cena_kooperacia:.2f} €")
+    st.metric("Finálna cena kooperácie (na 1 ks)", f"{cena_kooperacia:.2f} €")
 
 else:
-    st.write("Diel nevyžaduje kooperáciu.")
+    st.info("Diel nevyžaduje kooperáciu.")
     cena_kooperacia = 0.0
-
-# --- 20. PREMENNÁ: Vstupné náklady ---
-vstupne_naklady = cena_material + cena_kooperacia
 
 # 20. PREMENNÁ - Vstupné náklady na 1 kus
 # Sčítame cenu materiálu (14. premenná) a cenu kooperácie (19. premenná)
