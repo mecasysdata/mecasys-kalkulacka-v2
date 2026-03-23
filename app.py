@@ -23,39 +23,34 @@ d = st.number_input("Priemer komponentu [mm]", min_value=0.0, step=0.1, format="
 # 7. premenná - l
 l = st.number_input("Dĺžka komponentu [mm]", min_value=0.0, step=0.1, format="%.2f")
 
-# UPRAVENÉ NAČÍTANIE: Pridávame decimal a thousands, aby Pandas hneď spravil z hustoty číslo
+# Načítanie dát s ošetrením názvov stĺpcov a obsahu
 sheet_url = "https://docs.google.com/spreadsheets/d/e/2PACX-1vRfPBZ4TCpQyiqybU0ADu3AMwHCi2qOKifQAOnnTWnorVNJ1SVxtN6zJzXthOxCVwtXWp__Bp_-nto0/pub?gid=1281008948&single=true&output=csv"
-df_materialy = pd.read_csv(sheet_url, decimal=',', thousands='\xa0') 
-# Poznámka: \xa0 je kód pre nezlomiteľnú medzeru, ktorú Google Sheets používa
+df_materialy = pd.read_csv(sheet_url)
 
-# 8. premenná - material
+# OČISTA DÁT: Odstráni medzery z názvov stĺpcov aj z hodnôt v bunkách
+df_materialy.columns = df_materialy.columns.str.strip()
+df_materialy['material'] = df_materialy['material'].astype(str).str.strip()
+df_materialy['akost'] = df_materialy['akost'].astype(str).str.strip()
+
+# 8. a 9. premenná (už budú čisté)
 seznam_materialov = df_materialy['material'].unique()
 material = st.selectbox("Materiál", options=seznam_materialov)
 
-# 9. premenná - akost (filtrovaná podľa zvoleného materiálu)
 seznam_akosti = df_materialy[df_materialy['material'] == material]['akost'].unique()
 akost = st.selectbox("Akosť", options=seznam_akosti)
 
 # 10. premenná - hustota
 hustota = 0.0
-
 if material == "PLAST":
-    vyber = df_materialy[(df_materialy['material'] == "PLAST") & (df_materialy['akost'] == akost)]
-    
+    vyber = df_materialy[(df_materialy['material'] == material) & (df_materialy['akost'] == akost)]
     if not vyber.empty:
         raw_hustota = vyber['hustota'].values[0]
-        
-        # Agresívne čistenie: odstránime všetko okrem číslic, bodky a čiarky
-        clean_text = re.sub(r'[^0-9,.]', '', str(raw_hustota))
-        # Zameníme čiarku za bodku
-        clean_text = clean_text.replace(',', '.')
-        
+        # Vyčistenie čísla
+        clean_text = re.sub(r'[^0-9,.]', '', str(raw_hustota)).replace(',', '.')
         try:
             hustota = float(clean_text)
         except ValueError:
             hustota = 0.0
-    else:
-        hustota = 0.0
 
 # ... (zvyšok logiky pre NEREZ, OCEĽ, KOVY zostáva rovnaký) ...
 elif material == "NEREZ":
