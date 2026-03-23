@@ -40,9 +40,12 @@ def load_data(url):
 
 df_materialy = load_data(sheet_url)
 
-# 8. PREMENNÁ - Materiál
+# --- 8. PREMENNÁ - Materiál ---
 seznam_materialov = sorted(df_materialy['material'].unique())
-material = st.selectbox("Materiál", options=seznam_materialov)
+
+# Výber materiálu uložíme priamo do pamäte aplikácie (session_state)
+st.session_state['material_volba'] = st.selectbox("Materiál", options=seznam_materialov)
+material = st.session_state['material_volba'] # Toto zabezpečí, že premenná 'material' existuje
 
 # 9. PREMENNÁ - Akosť (Dostupná pre všetky materiály)
 seznam_akosti = list(sorted(df_materialy[df_materialy['material'] == material]['akost'].unique()))
@@ -241,7 +244,7 @@ plocha_plasta = math.pi * d * l
 # Zobrazenie výsledku
 st.write(f"**Plocha plášťa:** {plocha_plasta:.2f} mm²")
 
-# --- 19. PREMENNÁ: KOOPERÁCIA ---
+# --- 19. PREMENNÁ: KOOPERÁCIA (FINÁLNA VERZIA) ---
 
 st.subheader("Kooperácia")
 
@@ -251,51 +254,67 @@ je_kooperacia = st.checkbox("Vyžaduje tento diel kooperáciu?", value=False)
 cena_kooperacia = 0.0  # Predvolená hodnota
 
 if je_kooperacia:
-    # --- OPRAVA CHYBY NameError ---
-    # Tento riadok skontroluje, či premenná 'material' existuje predtým, než ju použije
+    # 1. Vytiahneme materiál z pamäte (z tvojej upravenej 8. premennej)
+    # Použijeme priamo lokálnu premennú 'material', ktorú definuješ na riadku 48
     if 'material' in locals() or 'material' in globals():
         
-        # 1. Filtrujeme druhy kooperácie podľa materiálu
+        # Filtrujeme tabuľku kooperácií podľa zvoleného materiálu
         dostupne_koop = df_koop[df_koop['material'] == material].copy()
 
         if not dostupne_koop.empty:
             zoznam_druhov = dostupne_koop['druh'].unique()
             vybrany_druh = st.selectbox("Vyberte druh kooperácie", options=zoznam_druhov)
             
-            # Vytiahnutie dát
+            # Vytiahnutie dát pre konkrétny vybraný druh
             riadok_koop = dostupne_koop[dostupne_koop['druh'] == vybrany_druh].iloc[0]
             
             tarifa = float(riadok_koop['tarifa'])
             jednotka = str(riadok_koop['jednotka']).strip().lower()
             minimum_objednavka = float(riadok_koop['minimum'])
             
-            # 2. Výpočet ceny na 1 kus
+            # 2. Výpočet ceny na 1 kus podľa jednotky (kg / dm2)
             vypocitana_jednotkova_cena = 0.0
+            
             if jednotka == "kg":
+                # Používame 15. premennú (hmotnost)
                 vypocitana_jednotkova_cena = tarifa * hmotnost
             elif jednotka == "dm2":
+                # Používame 17. premennú (plocha_prierez_dm2)
                 vypocitana_jednotkova_cena = tarifa * plocha_prierez_dm2
+            else:
+                st.error(f"Neplatná jednotka v tabuľke: {jednotka}. Podporované sú len 'kg' alebo 'dm2'.")
             
-            # 3. Logika minimálnej objednávky
+            # 3. LOGIKA MINIMÁLNEJ SUMY OBJEDNÁVKY
+            # pocet_kusov je tvoja 4. premenná
             celkova_suma_koop = pocet_kusov * vypocitana_jednotkova_cena
             
             if celkova_suma_koop < minimum_objednavka:
+                # Ak je súčet malý, cena na kus sa rozpočíta z minima
                 cena_kooperacia = minimum_objednavka / pocet_kusov
-                st.warning(f"Celková suma ({celkova_suma_koop:.2f} €) je pod minimom. Cena na kus zvýšená.")
+                st.warning(f"Celková suma ({celkova_suma_koop:.2f} €) je pod minimom ({minimum_objednavka:.2f} €). Cena bola navýšená.")
             else:
+                # Ak je súčet nad minimom, zostáva pôvodná cena
                 cena_kooperacia = vypocitana_jednotkova_cena
+                st.success(f"Suma kooperácie ({celkova_suma_koop:.2f} €) spĺňa minimum.")
 
-            st.metric("Finálna cena kooperácie na kus", f"{cena_kooperacia:.2f} €")
+            st.metric("Cena kooperácie na kus", f"{cena_kooperacia:.2f} €")
+            
         else:
-            st.info(f"Pre materiál '{material}' nie je v tabuľke kooperácia.")
+            # Ak sa materiál nenájde v tabuľke kooperácií
+            st.info(f"Pre materiál '{material}' nie sú v tabuľke kooperácií žiadne dáta.")
             cena_kooperacia = 0.0
     else:
-        # Ak by náhodou Python stále nevidel premennú material
-        st.error("Chyba: Systém nevidí vybraný materiál. Skontroluj poradie v kóde.")
+        # Ak by náhodou lokálna premenná vypadla, skúsime ju vziať priamo zo session_state
+        try:
+            material_fallback = st.session_state['material_volba']
+            dostupne_koop = df_koop[df_koop['material'] == material_fallback].copy()
+            st.warning("Používam dáta zo session_state.")
+        except:
+            st.error("Chyba: Materiál nebol nájdený. Skús znova vybrať materiál v menu hore.")
 else:
-    st.write("Diel je bez kooperácie.")
+    # Ak checkbox nie je zaškrtnutý
+    st.write("Diel nevyžaduje kooperáciu.")
     cena_kooperacia = 0.0
-
 
 # 20. PREMENNÁ - Vstupné náklady (zostáva rovnaká, teraz už s ošetrenou nulou)
 vstupne_naklady = cena_material + cena_kooperacia
