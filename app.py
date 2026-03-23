@@ -185,51 +185,52 @@ def load_material_prices(url):
 
 df_ceny = load_material_prices(sheet_cena_url)
 
-# --- 14. PREMENNÁ: CENA MATERIÁLU (KOMPLETNÝ A OPRAVENÝ BLOK) ---
+# --- 14. PREMENNÁ: CENA MATERIÁLU (S MOŽNOSŤOU RUČNEJ ÚPRAVY) ---
 st.subheader("Cena materiálu")
 
-# Inicializácia premenných pre výpočet
-cena_za_meter = 0.0
+# 1. KROK: Inicializácia základnej ceny na 0.0
+nalezena_cena = 0.0
 pouzite_d_zo_sheetu = None
 
-# 1. KROK: Vytvorenie výberu (Tu bola tá chyba - tento riadok chýbal alebo bol zle)
+# 2. KROK: Pokus o automatické vyhľadanie v cenníku
 mask = (df_ceny['material'] == material) & (df_ceny['akost'] == akost)
 dostupne_rozmery = df_ceny[mask].copy()
 
-# 2. KROK: Kontrola, či sme niečo našli
 if not dostupne_rozmery.empty:
-    # Hľadáme najbližšie d >= zadatému d (6. premenná)
     vhodne_riadky = dostupne_rozmery[dostupne_rozmery['d'] >= d]
-    
     if not vhodne_riadky.empty:
-        # Zoradíme a vezmeme najmenší vyhovujúci priemer
         najblizsi = vhodne_riadky.sort_values(by='d').iloc[0]
-        
         try:
-            # Prevod na číslo (ošetrenie čiarky)
-            cena_za_meter = float(str(najblizsi['cena']).replace(',', '.'))
+            # Očistíme a načítame cenu z tabuľky
+            nalezena_cena = float(str(najblizsi['cena']).replace(',', '.'))
             pouzite_d_zo_sheetu = najblizsi['d']
-            st.success(f"Automaticky nájdená cena (pre d={pouzite_d_zo_sheetu} mm): **{cena_za_meter:.2f} €/m**")
+            st.info(f"V cenníku nájdená cena: {nalezena_cena:.2f} €/m (pre d={pouzite_d_zo_sheetu} mm)")
         except:
-            cena_za_meter = 0.0
+            nalezena_cena = 0.0
     else:
-        st.info("V cenníku nie je dostatočne veľký priemer (d) pre tento materiál.")
+        st.warning("V cenníku nie je dostatočne veľký priemer (d).")
 else:
-    st.info("Materiál alebo akosť sa v cenníku nenachádza.")
+    st.warning("Materiál/akost sa v cenníku nenachádza.")
 
-# 3. KROK: Ručné zadanie, ak automat zlyhal
-if cena_za_meter <= 0:
-    cena_za_meter = st.number_input("Zadajte cenu materiálu za meter [€/m]:", min_value=0.0, format="%.2f", key="input_rucna_cena")
+# 3. KROK: Interaktívne políčko (Widget)
+# Ak kód našiel cenu, dosadí ju ako default (value). Ak nie, bude tam 0.0.
+# Užívateľ ju môže kedykoľvek prepísať.
+cena_za_meter = st.number_input(
+    "Potvrďte alebo upravte cenu materiálu za meter [€/m]:", 
+    min_value=0.0, 
+    value=nalezena_cena, 
+    format="%.2f", 
+    key="final_price_input"
+)
 
-# 4. KROK: Finálny výpočet
+# 4. KROK: Finálny výpočet na kus
 cena_material = cena_za_meter * (l / 1000)
 
 if cena_material > 0:
     st.metric("Vypočítaná cena materiálu na 1 kus", f"{cena_material:.2f} €")
 else:
-    st.warning("Zadajte cenu materiálu pre pokračovanie.")
+    st.error("Pre pokračovanie musí byť cena materiálu vyššia ako 0.")
     st.stop()
-
 
 # 15. PREMENNÁ - Hmotnosť kusu
 # Používame premenné d (6.) a l (7.), ktoré už máš definované vyššie
