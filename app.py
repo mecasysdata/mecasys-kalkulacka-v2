@@ -12,6 +12,7 @@ from fpdf import FPDF
 import io
 
 # --- INICIALIZÁCIA KOŠÍKA (SESSION STATE) ---
+finalna_cena_na_zapis = 0.0  # Štartovacia hodnota
 if 'polozky_ponuky' not in st.session_state:
     st.session_state.polozky_ponuky = []
 
@@ -22,11 +23,12 @@ def pridat_polozku():
         "Rozmer (d x l)": f"{d} x {l} mm",
         "Kusov": pocet_kusov,
         "Čas (M1)": f"{cas:.2f} min",
-        "Cena/ks (M2)": f"{predikovana_cena_m2:.2f} €",
-        "Spolu": f"{predikovana_cena_m2 * pocet_kusov:.2f} €"
+        # TU MUSÍ BYŤ: finalna_cena_na_zapis
+        "Cena/ks (M2)": f"{finalna_cena_na_zapis:.2f} EUR", 
+        "Spolu": f"{finalna_cena_na_zapis * pocet_kusov:.2f} EUR"
     }
     st.session_state.polozky_ponuky.append(nova_polozka)
-    st.toast("Položka bola pridaná do ponuky! ✅")
+    st.toast("Položka pridaná do ponuky! ✅")
 
 # 1. premenná - dátum
 datum = st.date_input("Dátum", value=date.today())
@@ -449,6 +451,30 @@ try:
 except Exception as e:
     # Ak súbory na Gite nie sú v správnom priečinku, tu uvidíš chybu
     st.warning(f"Model M2 nie je k dispozícii. (Chyba: {e})")
+
+# zaciatok upravy ceny
+# --- TVOJA NOVÁ LOGIKA POROVNANIA ---
+# Definujeme si výslednú cenu. Na začiatku je to tá z modelu.
+finalna_cena_na_zapis = predikovana_cena_m2
+
+# Ak sú náklady vyššie ako predikcia modelu
+if vstupne_naklady > predikovana_cena_m2:
+    st.error(f"⚠️ NÁKLADY ({vstupne_naklady:.2f} EUR) SÚ VYŠŠIE AKO PREDIKCIA ({predikovana_cena_m2:.2f} EUR)!")
+    
+    # Otvorí sa okno a ty ručne zadáš hodnotu. Žiaden vzorec, čistý tvoj vstup.
+    finalna_cena_na_zapis = st.number_input(
+        "ZADAJTE RUČNE PREDAJNÚ CENU [EUR]:", 
+        min_value=0.0, 
+        format="%.2f",
+        key="manual_price_input"
+    )
+else:
+    # Ak je model v poriadku, len vypíšeme info
+    st.success(f"✅ Model M2 je ziskový (Predikcia: {predikovana_cena_m2:.2f} EUR).")
+
+# Zobrazenie ceny, ktorá sa reálne použije
+st.metric("VÝSLEDNÁ CENA", f"{finalna_cena_na_zapis:.2f} EUR")
+# koniec upravy ceny 
 
 st.divider()
 st.subheader("📦 Aktuálna cenová ponuka")
