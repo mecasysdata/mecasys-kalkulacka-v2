@@ -490,10 +490,19 @@ if st.session_state.polozky_ponuky:
     df_ponuka = pd.DataFrame(st.session_state.polozky_ponuky)
     st.table(df_ponuka)
     
-    # Výpočet celkovej sumy
-   
-    celkova_suma = sum([float(str(i['Spolu']).replace(' EUR', '').replace(',', '.').strip()) for i in st.session_state.polozky_ponuky])
-    st.metric("CELKOVÁ CENA PONUKY", f"{celkova_suma:.2f} EUR") 
+
+    # Výpočet celkovej sumy (odolný voči chybám)
+celkova_suma = 0
+for i in st.session_state.polozky_ponuky:
+    try:
+        # Odstránime EUR, €, medzery a zmeníme čiarku na bodku
+        hodnota_str = str(i['Spolu']).replace('EUR', '').replace('€', '').replace(',', '.').strip()
+        celkova_suma += float(hodnota_str)
+    except Exception as e:
+        st.error(f"Chyba pri výpočte sumy v položke: {i['Spolu']}")
+
+st.metric("CELKOVÁ CENA PONUKY", f"{celkova_suma:.2f} EUR")
+    
     
     # Tlačidlo na vymazanie
     if st.button("🗑️ Vymazať celú ponuku"):
