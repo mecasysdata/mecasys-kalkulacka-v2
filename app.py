@@ -8,6 +8,8 @@ import pickle
 from xgboost import XGBRegressor
 import requests
 import datetime
+from fpdf import FPDF
+import io
 
 # --- INICIALIZÁCIA KOŠÍKA (SESSION STATE) ---
 if 'polozky_ponuky' not in st.session_state:
@@ -542,3 +544,72 @@ if st.session_state.polozky_ponuky:
             st.error(f"Nepodarilo sa spojiť s Google Scriptom: {e}")
 else:
     st.info("Pridajte položky do ponuky, aby ste ich mohli exportovať.")
+
+# --- GENEROVANIE PDF (Vlož na úplný koniec súboru) ---
+
+if st.session_state.polozky_ponuky:
+    st.write("---")
+    st.subheader("📄 Exportovať ponuku")
+
+    # Vytvoríme stĺpce, aby tlačidlo nebolo cez celú obrazovku
+    col_pdf, _ = st.columns([1, 2])
+
+    with col_pdf:
+        if st.button("Pripraviť PDF na stiahnutie"):
+            try:
+                pdf = FPDF(orientation='L', unit='mm', format='A4')
+                pdf.add_page()
+                
+                # Hlavička
+                pdf.set_font("Helvetica", "B", 16)
+                pdf.cell(0, 10, f"Cenova ponuka - {zakaznik}", ln=True, align='C')
+                pdf.ln(10)
+                
+                # Tabuľka - Hlavička
+                pdf.set_font("Helvetica", "B", 10)
+                headers = ["Material", "Akost", "Rozmer", "Ks", "Cas (M1)", "Cena/ks", "Spolu"]
+                widths = [40, 35, 50, 15, 25, 35, 35]
+                
+                for i in range(len(headers)):
+                    pdf.cell(widths[i], 10, headers[i], border=1, align='C')
+                pdf.ln()
+                
+                # Tabuľka - Dáta
+                pdf.set_font("Helvetica", "", 9)
+                suma_vsetko = 0
+                
+                for p in st.session_state.polozky_ponuky:
+                    # Prevod textu "12.34 €" na číslo pre sčítanie
+                    try:
+                        cista_suma = float(str(p['Spolu']).replace(' €', '').replace(',', '.').strip())
+                        suma_vsetko += cista_suma
+                    except:
+                        pass
+
+                    pdf.cell(widths[0], 8, str(p['Materiál']), border=1)
+                    pdf.cell(widths[1], 8, str(p['Akosť']), border=1)
+                    pdf.cell(widths[2], 8, str(p['Rozmer (d x l)']), border=1)
+                    pdf.cell(widths[3], 8, str(p['Kusov']), border=1, align='C')
+                    pdf.cell(widths[4], 8, str(p['Čas (M1)']), border=1, align='R')
+                    pdf.cell(widths[5], 8, str(p['Cena/ks (M2)']), border=1, align='R')
+                    pdf.cell(widths[6], 8, str(p['Spolu']), border=1, align='R')
+                    pdf.ln()
+                
+                # Celková suma
+                pdf.ln(5)
+                pdf.set_font("Helvetica", "B", 12)
+                pdf.cell(sum(widths[:-1]), 10, "CELKOVA CENA PONUKY SPOLU:", border=0, align='R')
+                pdf.cell(widths[-1], 10, f"{suma_vsetko:.2f} EUR", border=1, align='C')
+                
+                # DÔLEŽITÉ: Generovanie do bajtov pre Streamlit download button
+                pdf_output = pdf.output()
+                
+                st.download_button(
+                    label="⬇️ Stiahnuť vygenerované PDF",
+                    data=bytes(pdf_output),
+                    file_name=f"Ponuka_{zakaznik}.pdf",
+                    mime="application/pdf"
+                )
+                st.success("PDF je pripravené!")
+            except Exception as e:
+                st.error(f"Chyba pri generovaní PDF: {e}")
