@@ -15,7 +15,6 @@ import io
 finalna_cena_na_zapis = 0.0  # Štartovacia hodnota
 if 'polozky_ponuky' not in st.session_state:
     st.session_state.polozky_ponuky = []
-
 def pridat_polozku():
     nova_polozka = {
         "Materiál": material,
@@ -23,12 +22,16 @@ def pridat_polozku():
         "Rozmer (d x l)": f"{d} x {l} mm",
         "Kusov": pocet_kusov,
         "Čas (M1)": f"{cas:.2f} min",
-        # TU MUSÍ BYŤ: finalna_cena_na_zapis
         "Cena/ks (M2)": f"{finalna_cena_na_zapis:.2f} EUR", 
-        "Spolu": f"{finalna_cena_na_zapis * pocet_kusov:.2f} EUR"
+        "Spolu": f"{finalna_cena_na_zapis * pocet_kusov:.2f} EUR",
+        # TIETO DVA RIADKY SÚ KĽÚČOVÉ PRE PDF:
+        "mat_na_kus": cena_material,
+        "koop_na_kus": cena_kooperacia,
+        "predikovany_cas": cas
     }
     st.session_state.polozky_ponuky.append(nova_polozka)
     st.toast("Položka pridaná do ponuky! ✅")
+
 
 # 1. premenná - dátum
 datum = st.date_input("Dátum", value=date.today())
@@ -227,7 +230,7 @@ if not dostupne_rozmery.empty:
             # Očistíme a načítame cenu z tabuľky
             nalezena_cena = float(str(najblizsi['cena']).replace(',', '.'))
             pouzite_d_zo_sheetu = najblizsi['d']
-            st.info(f"V cenníku nájdená cena: {nalezena_cena:.2f} €/m (pre d={pouzite_d_zo_sheetu} mm)")
+            st.info(f"V cenníku nájdená cena: {nalezena_cena:.2f} EUR/m (pre d={pouzite_d_zo_sheetu} mm)")
         except:
             nalezena_cena = 0.0
     else:
@@ -239,7 +242,7 @@ else:
 # Ak kód našiel cenu, dosadí ju ako default (value). Ak nie, bude tam 0.0.
 # Užívateľ ju môže kedykoľvek prepísať.
 cena_za_meter = st.number_input(
-    "Potvrďte alebo upravte cenu materiálu za meter [€/m]:", 
+    "Potvrďte alebo upravte cenu materiálu za meter [EUR/m]:", 
     min_value=0.0, 
     value=nalezena_cena, 
     format="%.2f", 
@@ -250,7 +253,7 @@ cena_za_meter = st.number_input(
 cena_material = cena_za_meter * (l / 1000)
 
 if cena_material > 0:
-    st.metric("Vypočítaná cena materiálu na 1 kus", f"{cena_material:.2f} €")
+    st.metric("Vypočítaná cena materiálu na 1 kus", f"{cena_material:.2f} EUR")
 else:
     st.error("Pre pokračovanie musí byť cena materiálu vyššia ako 0.")
     st.stop()
@@ -332,7 +335,7 @@ if je_kooperacia:
     else:
         cena_kooperacia = vypocitana_jednotkova_cena
 
-    st.metric("Výsledná cena kooperácie na kus", f"{cena_kooperacia:.2f} €")
+    st.metric("Výsledná cena kooperácie na kus", f"{cena_kooperacia:.2f} EUR")
 else:
     st.info("Diel je bez kooperácie.")
     cena_kooperacia = 0.0
@@ -344,10 +347,10 @@ vstupne_naklady = cena_material + cena_kooperacia
 # Zobrazenie pre kontrolu
 st.subheader("Súčet vstupných nákladov")
 col1, col2 = st.columns(2)
-col1.metric("Materiál", f"{cena_material:.2f} €")
-col2.metric("Kooperácia", f"{cena_kooperacia:.2f} €")
+col1.metric("Materiál", f"{cena_material:.2f} EUR")
+col2.metric("Kooperácia", f"{cena_kooperacia:.2f} EUR")
 
-st.metric("CELKOVÉ VSTUPNÉ NÁKLADY (na kus)", f"{vstupne_naklady:.2f} €")
+st.metric("CELKOVÉ VSTUPNÉ NÁKLADY (na kus)", f"{vstupne_naklady:.2f} EUR")
 
 # --- 21. PREMENNÁ: MODEL 1 (PREDIKCIA ČASU) ---
 st.subheader("Predikcia výrobného času (Model 1)")
@@ -444,7 +447,7 @@ try:
     # 6. Zobrazenie výsledku
     if predikovana_cena_m2 > 0:
         st.success(f"Model M2 úspešne predikoval cenu pre krajinu: **{krajina}**")
-        st.metric("Predikovaná trhová cena", f"{predikovana_cena_m2:.2f} €")
+        st.metric("Predikovaná trhová cena", f"{predikovana_cena_m2:.2f} EUR")
     else:
         st.error("Model M2 vrátil neplatný výsledok.")
 
@@ -488,8 +491,9 @@ if st.session_state.polozky_ponuky:
     st.table(df_ponuka)
     
     # Výpočet celkovej sumy
-    celkova_suma = sum([float(i['Spolu'].replace(' €', '')) for i in st.session_state.polozky_ponuky])
-    st.metric("CELKOVÁ CENA PONUKY", f"{celkova_suma:.2f} €")
+   
+    celkova_suma = sum([float(str(i['Spolu']).replace(' EUR', '').replace(',', '.').strip()) for i in st.session_state.polozky_ponuky])
+    st.metric("CELKOVÁ CENA PONUKY", f"{celkova_suma:.2f} EUR") 
     
     # Tlačidlo na vymazanie
     if st.button("🗑️ Vymazať celú ponuku"):
@@ -572,103 +576,62 @@ else:
     st.info("Pridajte položky do ponuky, aby ste ich mohli exportovať.")
 
 
-# --- UPRAVENÝ SKRIPT PRE PDF (Kompletné informácie) ---
+# --- GENEROVANIE PDF ---
+import datetime
 
-# --- ABSOLÚTNE FINÁLNA VERZIA PRE PDF (Materiál + Kooperácia + Celková cena) ---
+pdf = FPDF(orientation='L', unit='mm', format='A4') # 'L' je na šírku, aby sa ti tam tie stĺpce zmestili
+pdf.add_page()
+pdf.set_font("Helvetica", "B", 14)
 
-if st.session_state.polozky_ponuky:
-    st.write("---")
-    st.subheader("📄 Exportovať kompletnú ponuku do PDF")
+# Hlavička s označením a dátumom
+pdf.cell(0, 10, f"CENOVÁ PONUKA: {ponuka}", ln=True, align='L')
+pdf.set_font("Helvetica", "", 10)
+pdf.cell(0, 8, f"Dátum vystavenia: {datetime.date.today().strftime('%d.%m.%Y')}", ln=True, align='L')
+pdf.ln(5)
 
-    col_pdf, _ = st.columns([1, 2])
+# Definícia šírok stĺpcov (spolu 275mm pre A4 na šírku)
+# Poradie: Názov/Rozmer | Čas | Mat/ks | Koop/ks | Cena/ks | Kusy | Spolu
+widths = [80, 30, 35, 35, 35, 20, 40]
 
-    with col_pdf:
-        if st.button("Pripraviť finálne PDF"):
-            try:
-                # Inicializácia PDF (Landscape)
-                pdf = FPDF(orientation='L', unit='mm', format='A4')
-                pdf.add_page()
-                
-                # HLAVIČKA
-                pdf.set_font("Helvetica", "B", 16)
-                pdf.cell(0, 10, "CENOVA PONUKA", ln=True, align='L')
-                
-                pdf.set_font("Helvetica", "", 10)
-                c_ponuky = ponuka if ponuka else datetime.datetime.now().strftime("%Y%m%d-%H%M")
-                d_ponuky = datum.strftime("%d.%m.%Y")
-                
-                pdf.cell(0, 7, f"Cislo CP: {c_ponuky}", ln=True)
-                pdf.cell(0, 7, f"Datum vystavenia: {d_ponuky}", ln=True)
-                pdf.cell(0, 7, f"Zakaznik: {zakaznik} ({krajina})", ln=True)
-                pdf.ln(10)
-                
-                # DEFINÍCIA TABUĽKY - VŠETKY NÁKLADOVÉ POLOŽKY
-                # Headers: Pridané Mat/ks aj Koop/ks
-                headers = ["Item", "Material", "Rozmer", "Ks", "Mat/ks", "Koop/ks", "Cena/ks", "Spolu"]
-                # Šírky stĺpcov (dokopy cca 275mm)
-                widths = [20, 50, 45, 15, 30, 30, 40, 45]
-                
-                # Hlavička tabuľky
-                pdf.set_font("Helvetica", "B", 9)
-                pdf.set_fill_color(240, 240, 240)
-                for i in range(len(headers)):
-                    pdf.cell(widths[i], 10, headers[i], border=1, align='C', fill=True)
-                pdf.ln()
-                
-                # DÁTA
-                pdf.set_font("Helvetica", "", 8)
-                suma_vsetko = 0
-                
-                def clean(txt):
-                    t = str(txt)
-                    replacements = {'á':'a','é':'e','í':'i','ó':'o','ú':'u','ý':'y','č':'c','ď':'d','ľ':'l','ň':'n','ŕ':'r','š':'s','ť':'t','ž':'z','€':''}
-                    for k, v in replacements.items(): t = t.replace(k, v)
-                    return t.strip()
+# Hlavná hlavička tabuľky
+pdf.set_font("Helvetica", "B", 9)
+headers = ["Položka (Názov a Rozmer)", "Predik. čas", "Mat. / kus", "Koop. / kus", "Cena / kus", "Ks", "Spolu"]
+for i, h in enumerate(headers):
+    pdf.cell(widths[i], 8, h, border=1, align='C')
+pdf.ln()
 
-                for i, p in enumerate(st.session_state.polozky_ponuky):
-                    try:
-                        cista_suma_str = str(p['Spolu']).replace('€', '').replace(',', '.').strip()
-                        suma_vsetko += float(cista_suma_str)
-                    except:
-                        pass
+def clean(txt):
+    t = str(txt)
+    reps = {'á':'a','é':'e','í':'i','ó':'o','ú':'u','ý':'y','č':'c','ď':'d','ľ':'l','ň':'n','š':'s','ť':'t','ž':'z','€':'','EUR':''}
+    for k, v in reps.items(): t = t.replace(k, v)
+    return t.strip()
 
-                    # Zápis riadku
-                    pdf.cell(widths[0], 8, clean(item if item else f"Pol. {i+1}"), border=1)
-                    pdf.cell(widths[1], 8, clean(p['Materiál']) + " " + clean(p['Akosť']), border=1)
-                    pdf.cell(widths[2], 8, clean(p['Rozmer (d x l)']), border=1)
-                    pdf.cell(widths[3], 8, str(p['Kusov']), border=1, align='C')
-                    
-                    # CENA MATERIÁLU (z premennej cena_material)
-                    pdf.cell(widths[4], 8, f"{cena_material:.2f} EUR", border=1, align='R')
-                    
-                    # CENA KOOPERÁCIE (z premennej cena_kooperacia)
-                    pdf.cell(widths[5], 8, f"{cena_kooperacia:.2f} EUR", border=1, align='R')
-                    
-                    # FINÁLNA CENA ZA KUS A CELKOM
-                    pdf.cell(widths[6], 8, clean(p['Cena/ks (M2)']) + " EUR", border=1, align='R')
-                    pdf.cell(widths[7], 8, clean(p['Spolu']) + " EUR", border=1, align='R')
-                    pdf.ln()
-                
-                # CELKOVÁ SUMA PONUKY
-                pdf.ln(5)
-                pdf.set_font("Helvetica", "B", 12)
-                pdf.cell(sum(widths[:-1]), 10, "CELKOVA CENA PONUKY SPOLU (EUR):", border=0, align='R')
-                pdf.cell(widths[-1], 10, f"{suma_vsetko:.2f}", border=1, align='C')
-                
-                # Pätička
-                pdf.set_y(-25)
-                pdf.set_font("Helvetica", "I", 8)
-                pdf.cell(0, 10, f"Vygenerovane systemom MECASYS - {datetime.datetime.now().strftime('%d.%m.%Y %H:%M')}", 0, 0, 'C')
+pdf.set_font("Helvetica", "", 9)
+suma_vsetko = 0
 
-                pdf_output = pdf.output()
-                
-                st.download_button(
-                    label="⬇️ Stiahnuť finálnu ponuku (PDF)",
-                    data=bytes(pdf_output),
-                    file_name=f"Ponuka_{zakaznik}_{c_ponuky}.pdf",
-                    mime="application/pdf"
-                )
-                st.success("PDF ponuka je pripravená na stiahnutie!")
+for i, p in enumerate(st.session_state.polozky_ponuky):
+    # Sčítanie celkovej sumy
+    try:
+        cista_suma = float(clean(p['Spolu']).replace(',', '.'))
+        suma_vsetko += cista_suma
+    except: pass
 
-            except Exception as e:
-                st.error(f"Chyba pri generovaní PDF: {e}")
+    # Riadok s dátami
+    nazov_itemu = f"{item} - {p['Materiál']} ({p['Rozmer (d x l)']})"
+    
+    pdf.cell(widths[0], 8, clean(nazov_itemu), border=1)
+    pdf.cell(widths[1], 8, f"{p.get('predikovany_cas', 0):.2f} min", border=1, align='C')
+    pdf.cell(widths[2], 8, f"{p.get('mat_na_kus', 0):.2f} EUR", border=1, align='R')
+    pdf.cell(widths[3], 8, f"{p.get('koop_na_kus', 0):.2f} EUR", border=1, align='R')
+    pdf.cell(widths[4], 8, clean(p['Cena/ks (M2)']), border=1, align='R')
+    pdf.cell(widths[5], 8, str(p['Kusov']), border=1, align='C')
+    pdf.cell(widths[6], 8, clean(p['Spolu']), border=1, align='R')
+    pdf.ln()
+
+# Výsledná cena cenovej ponuky (Päta)
+pdf.ln(5)
+pdf.set_font("Helvetica", "B", 11)
+pdf.cell(sum(widths[:-1]), 10, "CELKOVÁ SUMA PONUKY (EUR):", border=0, align='R')
+pdf.cell(widths[-1], 10, f"{suma_vsetko:.2f} EUR", border=1, align='C')
+
+pdf_output = pdf.output(dest='S').encode('latin-1')
