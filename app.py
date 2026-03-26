@@ -545,84 +545,103 @@ if st.session_state.polozky_ponuky:
 else:
     st.info("Pridajte položky do ponuky, aby ste ich mohli exportovať.")
 
-# --- GENEROVANIE PDF (Vlož na úplný koniec súboru) ---
 
-# --- FINÁLNY SKRIPT PRE PDF (Bezpečná verzia s EUR) ---
+# --- UPRAVENÝ SKRIPT PRE PDF (Kompletné informácie) ---
 
 if st.session_state.polozky_ponuky:
     st.write("---")
-    st.subheader("📄 Exportovat ponuku do PDF")
+    st.subheader("📄 Exportovať kompletnú ponuku do PDF")
 
     col_pdf, _ = st.columns([1, 2])
 
     with col_pdf:
-        if st.button("Pripravit PDF na stiahnutie"):
+        if st.button("Pripraviť finálne PDF"):
             try:
-                # Inicializácia PDF (Landscape - na šírku)
+                # Inicializácia PDF (Landscape kvôli množstvu stĺpcov)
                 pdf = FPDF(orientation='L', unit='mm', format='A4')
                 pdf.add_page()
                 
-                # Nadpis - Bez diakritiky pre istotu
+                # HLAVIČKA DOKUMENTU
                 pdf.set_font("Helvetica", "B", 16)
-                pdf.cell(0, 10, f"CENOVA PONUKA - {zakaznik}", ln=True, align='C')
+                pdf.cell(0, 10, "CENOVA PONUKA", ln=True, align='L')
+                
+                pdf.set_font("Helvetica", "", 10)
+                # Vygenerujeme číslo CP a dátum (rovnako ako pri odosielaní do Sheetu)
+                c_ponuky = ponuka if ponuka else datetime.datetime.now().strftime("%Y%m%d-%H%M")
+                d_ponuky = datum.strftime("%d.%m.%Y")
+                
+                pdf.cell(0, 7, f"Cislo CP: {c_ponuky}", ln=True)
+                pdf.cell(0, 7, f"Datum vystavenia: {d_ponuky}", ln=True)
+                pdf.cell(0, 7, f"Zakaznik: {zakaznik} ({krajina})", ln=True)
                 pdf.ln(10)
                 
-                # Definícia hlavičky (Názvy bez diakritiky)
-                pdf.set_font("Helvetica", "B", 10)
-                headers = ["Material", "Akost", "Rozmer", "Ks", "Cas (min)", "Cena/ks (EUR)", "Spolu (EUR)"]
-                widths = [45, 35, 50, 15, 25, 40, 40]
+                # DEFINÍCIA TABUĽKY - VŠETKY STĹPCE
+                # Skrátené názvy kvôli šírke strany
+                headers = ["Item", "Material", "Akost", "Rozmer", "Hmotn.", "Ks", "Cas/ks", "Cena/ks", "Spolu"]
+                # Celková šírka A4 landscape je cca 280mm (s okrajmi)
+                widths = [25, 45, 35, 45, 20, 15, 25, 35, 35]
                 
+                # Hlavička tabuľky
+                pdf.set_font("Helvetica", "B", 9)
+                pdf.set_fill_color(240, 240, 240) # Jemne šedé pozadie hlavičky
                 for i in range(len(headers)):
-                    pdf.cell(widths[i], 10, headers[i], border=1, align='C')
+                    pdf.cell(widths[i], 10, headers[i], border=1, align='C', fill=True)
                 pdf.ln()
                 
-                # Dáta z košíka
-                pdf.set_font("Helvetica", "", 9)
+                # DÁTA
+                pdf.set_font("Helvetica", "", 8)
                 suma_vsetko = 0
                 
-                for p in st.session_state.polozky_ponuky:
-                    # 1. Výpočet celkovej sumy (čistenie od € a čiarky)
+                # Použijeme rovnaký index 'i' pre Identifikátor položky
+                for i, p in enumerate(st.session_state.polozky_ponuky):
+                    # Výpočet sumy pre pätičku
                     try:
                         cista_suma_str = str(p['Spolu']).replace('€', '').replace(',', '.').strip()
                         suma_vsetko += float(cista_suma_str)
                     except:
                         pass
 
-                    # 2. Príprava textov pre bunky (nahradenie € za EUR a odstránenie diakritiky v materiáli ak treba)
-                    # Poznámka: str(p[...]) zabezpečí, že aj čísla sú textom
-                    material_text = str(p['Materiál']).replace('á', 'a').replace('í', 'i').replace('é', 'e') # Jednoduchý fix diakritiky
-                    rozmer_text = str(p['Rozmer (d x l)'])
-                    akost_text = str(p['Akosť']).replace('ť', 't')
-                    cas_text = str(p['Čas (M1)']).replace('min', '').strip()
-                    jednotkova_cena = str(p['Cena/ks (M2)']).replace('€', '').strip()
-                    spolu_cena = str(p['Spolu']).replace('€', '').strip()
+                    # Ošetrenie textov (odstránenie diakritiky pre Helvetica)
+                    def clean(txt):
+                        t = str(txt)
+                        replacements = {'á':'a','é':'e','í':'i','ó':'o','ú':'u','ý':'y','č':'c','ď':'d','ľ':'l','ň':'n','ŕ':'r','š':'s','ť':'t','ž':'z','€':'EUR'}
+                        for k, v in replacements.items(): t = t.replace(k, v)
+                        return t
 
-                    # 3. Zápis do riadku
-                    pdf.cell(widths[0], 8, material_text, border=1)
-                    pdf.cell(widths[1], 8, akost_text, border=1)
-                    pdf.cell(widths[2], 8, rozmer_text, border=1)
-                    pdf.cell(widths[3], 8, str(p['Kusov']), border=1, align='C')
-                    pdf.cell(widths[4], 8, cas_text, border=1, align='R')
-                    pdf.cell(widths[5], 8, jednotkova_cena, border=1, align='R')
-                    pdf.cell(widths[6], 8, spolu_cena, border=1, align='R')
+                    # Zápis riadku
+                    # Ak nemáme 'Identifikátor položky' v session_state, použijeme "Item X"
+                    pdf.cell(widths[0], 8, clean(item if item else f"Polozka {i+1}"), border=1)
+                    pdf.cell(widths[1], 8, clean(p['Materiál']), border=1)
+                    pdf.cell(widths[2], 8, clean(p['Akosť']), border=1)
+                    pdf.cell(widths[3], 8, clean(p['Rozmer (d x l)']), border=1)
+                    # Hmotnosť berieme z aktuálneho výpočtu (ako v Sheete)
+                    pdf.cell(widths[4], 8, f"{hmotnost:.3f} kg", border=1, align='C')
+                    pdf.cell(widths[5], 8, str(p['Kusov']), border=1, align='C')
+                    pdf.cell(widths[6], 8, clean(p['Čas (M1)']), border=1, align='R')
+                    pdf.cell(widths[7], 8, clean(p['Cena/ks (M2)']), border=1, align='R')
+                    pdf.cell(widths[8], 8, clean(p['Spolu']), border=1, align='R')
                     pdf.ln()
                 
-                # Celková suma na konci
+                # CELKOVÁ SUMA
                 pdf.ln(5)
-                pdf.set_font("Helvetica", "B", 12)
+                pdf.set_font("Helvetica", "B", 11)
                 pdf.cell(sum(widths[:-1]), 10, "CELKOVA CENA PONUKY SPOLU (EUR):", border=0, align='R')
                 pdf.cell(widths[-1], 10, f"{suma_vsetko:.2f}", border=1, align='C')
                 
-                # Generovanie do objektu pre stiahnutie
+                # Pätička s info
+                pdf.set_y(-25)
+                pdf.set_font("Helvetica", "I", 8)
+                pdf.cell(0, 10, f"Vygenerovane systemom MECASYS - {datetime.datetime.now().strftime('%d.%m.%Y %H:%M')}", 0, 0, 'C')
+
                 pdf_output = pdf.output()
                 
                 st.download_button(
-                    label="⬇️ Stiahnut hotove PDF",
+                    label="⬇️ Stiahnuť finálne PDF",
                     data=bytes(pdf_output),
-                    file_name=f"Ponuka_{zakaznik}.pdf",
+                    file_name=f"Ponuka_{zakaznik}_{c_ponuky}.pdf",
                     mime="application/pdf"
                 )
-                st.success("PDF uspesne vygenerovane!")
+                st.success("PDF úspešne pripravené!")
 
             except Exception as e:
-                st.error(f"Chyba pri generovani PDF: {e}")
+                st.error(f"Chyba pri generovaní PDF: {e}")
