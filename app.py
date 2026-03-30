@@ -231,9 +231,9 @@ else:
         # Ak je data_zakaznika prázdne, znamená to, že zákazník je v pamäti, 
         # ale ešte nie je v Google CSV. Hodnoty už máme zadané z formulára.
         if not krajina:
-        krajina = "Neznáma" 
+            krajina = "Neznáma" 
         if not lojalita:
-        lojalita = 0.5
+            lojalita = 0.5
        
 
 # Zobrazenie výsledných hodnôt pre kontrolu
