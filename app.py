@@ -92,17 +92,17 @@ hustota = 0.0
 
 # A. Logika pre PLAST (hľadá v sheete)
 if material == "PLAST":
-    if akost_vyber != "Iná akosť (zadať ručne)":
-        vyber = df_materialy[(df_materialy['material'] == material) & (df_materialy['akost'] == akost)]
-        if not vyber.empty:
-            raw_val = str(vyber['hustota'].values[0]).strip()
-            temp_val = raw_val.replace(',', '')
-            clean_val = re.sub(r'[^0-9.]', '', temp_val)
-            try:
-                hustota = float(clean_val)
-            except ValueError:
-                hustota = 0.0
-    # Ak je to nová akosť plastu, hustota zostane 0.0 a vypýta si ju ručne nižšie
+    vyber = df_materialy[(df_materialy['material'] == material) & (df_materialy['akost'] == akost)]
+    if not vyber.empty:
+        raw_val = str(vyber['hustota'].values[0])
+        
+        # OPRAVA TU: Vymažeme medzery (aj tie špeciálne excelovské) a zmeníme čiarku na bodku
+        clean_val = raw_val.replace(',', '.').replace('\xa0', '').replace(' ', '')
+        
+        try:
+            hustota = float(clean_val)
+        except:
+            hustota = 0.0
 
 # B. Logika pre ostatné materiály (podľa tvojich podmienok)
 elif material == "NEREZ":
