@@ -130,7 +130,8 @@ if hustota <= 0:
     st.warning("Pre pokračovanie je potrebné určiť hustotu materiálu.")
     st.stop()
 # --- NAČÍTANIE SHEETU ZÁKAZNÍKOV ---
-sheet_zakaznici_url = "https://docs.google.com/spreadsheets/d/e/2PACX-1vRfPBZ4TCpQyiqybU0ADu3AMwHCi2qOKifQAOnnTWnorVNJ1SVxtN6zJzXthOxCVwtXWp__Bp_-nto0/pub?gid=324957857&single=true&output=csv"
+sheet_zakaznici_url = "https://docs.google.com/spreadsheets/d/e/2PACX-1vSuHQWbpryWNerWr8aKKheHbzTPhXI6lS7YH1sL5zwFIIzLfpTZz47acY_ua2e_fVqEcfxMBe5wnjue/pub?gid=0&single=true&output=csv"
+
 
 @st.cache_data
 def load_customers(url):
