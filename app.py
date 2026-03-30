@@ -517,7 +517,7 @@ if st.session_state.polozky_ponuky:
                     "l": l,
                     "hustota": hustota,
                     "hmotnost": hmotnost,
-                    "narocnost": "Štandard",
+                    "narocnost": narocnost,
                     "j_cena_mat": cena_za_meter,
                     "naklad_mat": cena_material,
                     "naklad_koop": cena_kooperacia,
