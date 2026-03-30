@@ -110,11 +110,14 @@ elif material == "NEREZ":
 elif material == "OCEĽ":
     hustota = 7900.0
 elif material == "FAREBNÉ KOVY":
-    if akost.startswith("3.7"):
+    # Prevedieme akosť na text a nahradíme čiarku bodkou pre kontrolu
+    akost_test = str(akost).replace(',', '.')
+    
+    if akost_test.startswith("3.7"):
         hustota = 4500.0
-    elif akost.startswith("3."):
+    elif akost_test.startswith("3."):
         hustota = 2900.0
-    elif akost.startswith("2."):
+    elif akost_test.startswith("2."):
         hustota = 9000.0
     # Ak nová akosť farebného kovu nezačína týmito číslami, hustota zostane 0.0
 
