@@ -621,9 +621,9 @@ if st.session_state.polozky_ponuky:
                 c_ponuky = ponuka if ponuka else datetime.datetime.now().strftime("%Y%m%d-%H%M")
                 d_ponuky = datum.strftime("%d.%m.%Y")
                 
-                pdf.cell(0, 7, f"Cislo CP: {c_ponuky}", ln=True)
-                pdf.cell(0, 7, f"Datum vystavenia: {d_ponuky}", ln=True)
-                pdf.cell(0, 7, f"Zakaznik: {zakaznik} ({krajina})", ln=True)
+                pdf.cell(0, 7, clean(f"Cislo CP: {c_ponuky}"), ln=True)
+                pdf.cell(0, 7, clean(f"Datum vystavenia: {d_ponuky}"), ln=True)
+                pdf.cell(0, 7, clean(f"Zakaznik: {zakaznik} ({krajina})"), ln=True)
                 pdf.ln(10)
                 
                 # DEFINÍCIA TABUĽKY - VŠETKY NÁKLADOVÉ POLOŽKY
@@ -636,7 +636,7 @@ if st.session_state.polozky_ponuky:
                 pdf.set_font("Helvetica", "B", 9)
                 pdf.set_fill_color(240, 240, 240)
                 for i in range(len(headers)):
-                    pdf.cell(widths[i], 10, headers[i], border=1, align='C', fill=True)
+                    pdf.cell(widths[i], 10, clean(headers[i]), border=1, align='C', fill=True)
                 pdf.ln()
                 
                 # DÁTA
@@ -645,7 +645,7 @@ if st.session_state.polozky_ponuky:
                 
                 def clean(txt):
                     t = str(txt)
-                    replacements = {'á':'a','é':'e','í':'i','ó':'o','ú':'u','ý':'y','č':'c','ď':'d','ľ':'l','ň':'n','ŕ':'r','š':'s','ť':'t','ž':'z','€':''}
+                    replacements = {'á':'a','é':'e','í':'i','ó':'o','ú':'u','ý':'y','č':'c','ď':'d','ľ':'l','ň':'n','ŕ':'r','š':'s','ť':'t','ž':'z','Á':'A','É':'E','Í':'I','Ó':'O','Ú':'U','Ý':'Y','Č':'C','Ď':'D','Ľ':'L','Ň':'N','Ŕ':'R','Š':'S','Ť':'T','Ž':'Z','€':''}
                     for k, v in replacements.items(): t = t.replace(k, v)
                     return t.strip()
 
