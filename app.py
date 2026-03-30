@@ -121,17 +121,51 @@ elif material == "FAREBNÉ KOVY":
         hustota = 9000.0
     # Ak nová akosť farebného kovu nezačína týmito číslami, hustota zostane 0.0
 
-# ZOBRAZENIE / RUČNÉ DOPLNENIE
+# --- ZOBRAZENIE / RUČNÉ DOPLNENIE ---
 if hustota <= 0:
     hustota = st.number_input("Hustota nenájdená alebo neznáma. Zadajte manuálne [kg/m3]:", min_value=0.0, format="%.2f")
 else:
-    # Ak sa hustota určila automaticky (napr. 7900 pre Oceľ), tu sa zobrazí a dá sa prepísať
+    # Ak sa hustota určila automaticky, tu sa zobrazí a dá sa prepísať
     hustota = st.number_input("Hustota materiálu [kg/m3]:", value=hustota, format="%.2f")
 
-# Validácia
+# --- LOGIKA PRE UKLADANIE NOVEJ AKOSTI ---
+if akost_vyber == "Iná akosť (zadať ručne)":
+    st.markdown("---")
+    st.subheader("Uložiť novú akosť do databázy")
+    
+    if st.button("🚀 Odoslať do Google Sheet"):
+        if not akost or akost.strip() == "":
+            st.error("Chýba názov akosti!")
+        elif hustota <= 0:
+            st.error("Hustota musí byť väčšia ako 0!")
+        else:
+            url_api = "https://script.google.com/macros/s/AKfycbysapIykA2JulM9882rQmM3tfFvbvrmYDeW-iM5jyR4MTg8ZlNWhTdgV4pGxNhn6JNb/exec"
+            payload = {
+                "material": material,
+                "akost": akost,
+                "hustota": hustota
+            }
+            
+            try:
+                with st.spinner('Ukladám dáta...'):
+                    import requests
+                    response = requests.post(url_api, json=payload)
+                
+                if "Success" in response.text:
+                    st.success(f"Hotovo! Akosť '{akost}' bola pridaná do tabuľky.")
+                    st.cache_data.clear()
+                else:
+                    st.error(f"Server vrátil chybu: {response.text}")
+            except Exception as e:
+                st.error(f"Nepodarilo sa spojiť s Google Sheet: {e}")
+
+# Validácia pre zvyšok výpočtov
 if hustota <= 0:
     st.warning("Pre pokračovanie je potrebné určiť hustotu materiálu.")
     st.stop()
+
+
+
 # --- NAČÍTANIE SHEETU ZÁKAZNÍKOV ---
 sheet_zakaznici_url = "https://docs.google.com/spreadsheets/d/e/2PACX-1vSuHQWbpryWNerWr8aKKheHbzTPhXI6lS7YH1sL5zwFIIzLfpTZz47acY_ua2e_fVqEcfxMBe5wnjue/pub?gid=0&single=true&output=csv"
 
