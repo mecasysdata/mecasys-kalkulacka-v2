@@ -609,6 +609,13 @@ if st.session_state.polozky_ponuky:
     with col_pdf:
         if st.button("Pripraviť finálne PDF"):
             try:
+                def clean(txt):
+                    t = str(txt)
+                    replacements = {'á':'a','é':'e','í':'i','ó':'o','ú':'u','ý':'y','č':'c','ď':'d','ľ':'l','ň':'n','ŕ':'r','š':'s','ť':'t','ž':'z','Á':'A','É':'E','Í':'I','Ó':'O','Ú':'U','Ý':'Y','Č':'C','Ď':'D','Ľ':'L','Ň':'N','Ŕ':'R','Š':'S','Ť':'T','Ž':'Z','€':''}
+                    for k, v in replacements.items():
+                        t = t.replace(k, v)
+                    return t.strip()
+              
                 # Inicializácia PDF (Landscape)
                 pdf = FPDF(orientation='L', unit='mm', format='A4')
                 pdf.add_page()
@@ -643,12 +650,6 @@ if st.session_state.polozky_ponuky:
                 pdf.set_font("Helvetica", "", 8)
                 suma_vsetko = 0
                 
-                def clean(txt):
-                    t = str(txt)
-                    replacements = {'á':'a','é':'e','í':'i','ó':'o','ú':'u','ý':'y','č':'c','ď':'d','ľ':'l','ň':'n','ŕ':'r','š':'s','ť':'t','ž':'z','Á':'A','É':'E','Í':'I','Ó':'O','Ú':'U','Ý':'Y','Č':'C','Ď':'D','Ľ':'L','Ň':'N','Ŕ':'R','Š':'S','Ť':'T','Ž':'Z','€':''}
-                    for k, v in replacements.items(): t = t.replace(k, v)
-                    return t.strip()
-
                 for i, p in enumerate(st.session_state.polozky_ponuky):
                     try:
                         cista_suma_str = str(p['Spolu']).replace('€', '').replace(',', '.').strip()
