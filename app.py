@@ -50,7 +50,7 @@ d = st.number_input("Priemer komponentu [mm]", min_value=0.0, step=0.1, format="
 l = st.number_input("Dĺžka komponentu [mm]", min_value=0.0, step=0.1, format="%.2f")
 
 # --- SPRÁVNE NAČÍTANIE SHEETU ---
-sheet_url = "https://docs.google.com/spreadsheets/d/e/2PACX-1vRfPBZ4TCpQyiqybU0ADu3AMwHCi2qOKifQAOnnTWnorVNJ1SVxtN6zJzXthOxCVwtXWp__Bp_-nto0/pub?gid=1281008948&single=true&output=csv"
+sheet_url = "https://docs.google.com/spreadsheets/d/e/2PACX-1vRcCPwLT_Cm8Xpj4urw7DUa5FGGyWiCEKKl8ySUEnGtFjsKzbvwtw6MURs1TyqasHhAJsWcdP6d3Q7O/pub?gid=0&single=true&output=csv"
 
 @st.cache_data
 def load_data(url):
