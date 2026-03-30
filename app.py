@@ -159,16 +159,42 @@ zakaznik = ""
 krajina = ""
 lojalita = 0.0
 
+
 if zakaznik_vyber == "Nový zákazník (zadať ručne)":
-    # Ručné zadanie mena a krajiny
+    # Ručné zadanie mena a krajiny (Tvoje pôvodné riadky)
     zakaznik = st.text_input("Zadajte meno nového zákazníka:")
     krajina = st.text_input("Zadajte krajinu zákazníka:")
+    
     # 13. PREMENNÁ - lojalita pre nového zákazníka je automaticky 0.5
     lojalita = 0.5
-    
+
+    # --- NOVÁ ČASŤ: TLAČIDLO NA ULOŽENIE ---
+    if st.button("🚀 Uložiť zákazníka do databázy"):
+        if zakaznik and krajina:
+            # Pripravíme dáta presne podľa tvojich názvov
+            payload = {
+                "zakaznik": zakaznik,
+                "krajina": krajina,
+                "lojalita": lojalita
+            }
+            try:
+                # Odošle dáta do tvojho Google Apps Scriptu
+                api_url = "https://script.google.com/macros/s/AKfycbwNR33wxSNXJFo9-o2otM-mdKQE22s3i3y5n08dY7eogGhhKDTasiPn3zaOoSihppTq/exec"
+                requests.post(api_url, json=payload)
+                
+                st.success(f"Zákazník **{zakaznik}** bol odoslaný do tabuľky!")
+                st.cache_data.clear() # Vymaže cache, aby sa po reštarte načítal nový zoznam
+                st.rerun()            # Reštartuje aplikáciu
+            except Exception as e:
+                st.error(f"Chyba pri komunikácii s Google Sheets: {e}")
+        else:
+            st.warning("Prosím, vyplňte meno aj krajinu pred uložením.")
+    # ----------------------------------------
+
     if not zakaznik or not krajina:
         st.warning("Prosím, vyplňte meno aj krajinu zákazníka.")
         st.stop()
+
 else:
     # 11. PREMENNÁ - zakaznik (zo zoznamu)
     zakaznik = zakaznik_vyber
