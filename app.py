@@ -149,10 +149,22 @@ st.subheader("Informácie o zákazníkovi")
 
 # 11. PREMENNÁ - zakaznik
 # Do zoznamu pridáme možnosť pre nového zákazníka
-seznam_zakaznikov = list(sorted(df_zakaznici['zakaznik'].unique()))
-seznam_zakaznikov.append("Nový zákazník (zadať ručne)")
 
-zakaznik_vyber = st.selectbox("Vyberte zákazníka", options=seznam_zakaznikov)
+# 1. Vytvoríme základný zoznam z tabuľky
+seznam_zakaznikov = list(sorted(df_zakaznici['zakaznik'].unique()))
+
+# 2. KONTROLA: Ak sme práve uložili nového, pridáme ho do zoznamu umelo
+if "vybrany_zakaznik" in st.session_state:
+    meno_noveho = st.session_state["vybrany_zakaznik"]
+    if meno_noveho not in seznam_zakaznikov:
+        seznam_zakaznikov.append(meno_noveho)
+        seznam_zakaznikov.sort()
+
+# 3. Pridáme možnosť pre manuálne zadanie
+if "Nový zákazník (zadať ručne)" not in seznam_zakaznikov:
+    seznam_zakaznikov.append("Nový zákazník (zadať ručne)")
+
+zakaznik_vyber = st.selectbox("Vyberte zákazníka", options=seznam_zakaznikov,key="vybrany_zakaznik")
 
 # Inicializácia premenných
 zakaznik = ""
@@ -181,7 +193,7 @@ if zakaznik_vyber == "Nový zákazník (zadať ručne)":
                 # Odošle dáta do tvojho Google Apps Scriptu
                 api_url = "https://script.google.com/macros/s/AKfycbwNR33wxSNXJFo9-o2otM-mdKQE22s3i3y5n08dY7eogGhhKDTasiPn3zaOoSihppTq/exec"
                 requests.post(api_url, json=payload)
-                
+                st.session_state["vybrany_zakaznik"] = zakaznik
                 st.success(f"Zákazník **{zakaznik}** bol odoslaný do tabuľky!")
                 st.cache_data.clear() # Vymaže cache, aby sa po reštarte načítal nový zoznam
                 st.rerun()            # Reštartuje aplikáciu
