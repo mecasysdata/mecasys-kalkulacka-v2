@@ -149,8 +149,13 @@ st.subheader("Informácie o zákazníkovi")
 
 # 11. PREMENNÁ - zakaznik
 # Do zoznamu pridáme možnosť pre nového zákazníka
+# --- TOTO PRIDAJ SEM (ešte pred riadok 153) ---
+if "novy_zakaznik_meno" in st.session_state:
+    st.session_state["vybrany_zakaznik"] = st.session_state["novy_zakaznik_meno"]
+    del st.session_state["novy_zakaznik_meno"] # Hneď to aj vymažeme, aby to nezavadzalo
 
 # 1. Vytvoríme základný zoznam z tabuľky
+
 seznam_zakaznikov = list(sorted(df_zakaznici['zakaznik'].unique()))
 
 # 2. KONTROLA: Ak sme práve uložili nového, pridáme ho do zoznamu umelo
@@ -193,10 +198,9 @@ if zakaznik_vyber == "Nový zákazník (zadať ručne)":
                 # Odošle dáta do tvojho Google Apps Scriptu
                 api_url = "https://script.google.com/macros/s/AKfycbwNR33wxSNXJFo9-o2otM-mdKQE22s3i3y5n08dY7eogGhhKDTasiPn3zaOoSihppTq/exec"
                 requests.post(api_url, json=payload)
-                st.session_state["vybrany_zakaznik"] = zakaznik
+                st.session_state["novy_zakaznik_meno"] = zakaznik
                 st.success(f"Zákazník **{zakaznik}** bol odoslaný do tabuľky!")
-                st.cache_data.clear() # Vymaže cache, aby sa po reštarte načítal nový zoznam
-                st.rerun()            # Reštartuje aplikáciu
+                
             except Exception as e:
                 st.error(f"Chyba pri komunikácii s Google Sheets: {e}")
         else:
@@ -222,10 +226,15 @@ else:
         try:
             lojalita = float(clean_lojalita)
         except ValueError:
-            lojalita = 0.0
+            lojalita = 0.5
     else:
-        st.error("Dáta sa nepodarilo načítať.")
-        st.stop()
+        # Ak je data_zakaznika prázdne, znamená to, že zákazník je v pamäti, 
+        # ale ešte nie je v Google CSV. Hodnoty už máme zadané z formulára.
+        if not krajina:
+        krajina = "Neznáma" 
+        if not lojalita:
+        lojalita = 0.5
+       
 
 # Zobrazenie výsledných hodnôt pre kontrolu
 st.info(f"Zákazník: **{zakaznik}** | Krajina: **{krajina}** | Lojalita: **{lojalita}**")
