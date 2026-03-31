@@ -322,8 +322,6 @@ else:
     st.warning("Materiál/akost sa v cenníku nenachádza.")
 
 # 3. KROK: Interaktívne políčko (Widget)
-# Ak kód našiel cenu, dosadí ju ako default (value). Ak nie, bude tam 0.0.
-# Užívateľ ju môže kedykoľvek prepísať.
 cena_za_meter = st.number_input(
     "Potvrďte alebo upravte cenu materiálu za meter [€/m]:", 
     min_value=0.0, 
@@ -339,11 +337,9 @@ if cena_material > 0:
     st.metric("Vypočítaná cena materiálu na 1 kus", f"{cena_material:.2f} €")
     
     # --- LOGIKA PRE ULOŽENIE NOVEJ CENY ---
-    # Tlačidlo sa zobrazí len vtedy, ak sa v sheete predtým nič nenašlo (nalezena_cena == 0)
     if nalezena_cena == 0:
         st.info("💡 Tento rozmer/materiál nie je v cenníku. Môžete ho pridať jedným kliknutím.")
         
-        # Potvrdenie priemeru (d), ktorý sa zapíše do stĺpca E
         d_pre_cennik = st.number_input("Potvrďte priemer polotovaru pre cenník [mm]:", value=float(d), key="d_cennik")
         
         if st.button("💾 Uložiť túto cenu do cenníka"):
@@ -357,19 +353,20 @@ if cena_material > 0:
             }
             try:
                 with st.spinner('Zapisujem do cenníka...'):
-                res = requests.post(url_cennik, json=payload, timeout=10)
-            
-                # TENTO RIADOK MUSÍ BYŤ ODSADENÝ ROVNAKO AKO 'res = ...'
-                        if res.status_code == 200:
-                            st.success(f"✅ Hotovo! Materiál {material} {akost} s priemerom {d_pre_cennik} bol pridaný do cenníka.")
-                            st.cache_data.clear()
-                        else:
-                            st.error(f"Chyba pri ukladaní (Kód: {res.status_code})")
-            except Exceptation as e:
+                    res = requests.post(url_cennik, json=payload, timeout=10)
+                
+                    if res.status_code == 200:
+                        st.success(f"✅ Hotovo! Materiál {material} {akost} s priemerom {d_pre_cennik} bol pridaný do cenníka.")
+                        st.cache_data.clear()
+                    else:
+                        st.error(f"Chyba pri ukladaní (Kód: {res.status_code})")
+            except Exception as e:
                 st.error(f"Nepodarilo sa spojiť: {e}")
 else:
     st.error("Pre pokračovanie musí byť cena materiálu vyššia ako 0.0")
     st.stop()
+
+
 
 # 15. PREMENNÁ - Hmotnosť kusu
 # Používame premenné d (6.) a l (7.), ktoré už máš definované vyššie
