@@ -17,6 +17,7 @@ if 'polozky_ponuky' not in st.session_state:
 
 def pridat_polozku():
     nova_polozka = {
+        "item":item,
         "Materiál": material,
         "Akosť": akost,
         "Rozmer (d x l)": f"{d} x {l} mm",
