@@ -360,11 +360,11 @@ if cena_material > 0:
                 res = requests.post(url_cennik, json=payload, timeout=10)
             
                 # TENTO RIADOK MUSÍ BYŤ ODSADENÝ ROVNAKO AKO 'res = ...'
-                    if res.status_code == 200:
-                    st.success(f"✅ Hotovo! Materiál {material} {akost} s priemerom {d_pre_cennik} bol pridaný do cenníka.")
-                    st.cache_data.clear()
-                    else:
-                    st.error(f"Chyba pri ukladaní (Kód: {res.status_code})")
+                        if res.status_code == 200:
+                            st.success(f"✅ Hotovo! Materiál {material} {akost} s priemerom {d_pre_cennik} bol pridaný do cenníka.")
+                            st.cache_data.clear()
+                        else:
+                            st.error(f"Chyba pri ukladaní (Kód: {res.status_code})")
             except Exceptation as e:
                 st.error(f"Nepodarilo sa spojiť: {e}")
 else:
