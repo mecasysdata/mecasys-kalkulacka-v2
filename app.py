@@ -308,7 +308,9 @@ if not dostupne_rozmery.empty:
         najblizsi = vhodne_riadky.sort_values(by='d').iloc[0]
         try:
             # Očistíme a načítame cenu z tabuľky
-            nalezena_cena = float(str(najblizsi['cena']).replace(',', '.'))
+            raw_cena = str(najblizsi['cena'])
+            clean_cena = raw_cena.replace(',', '.').replace('\xa0', '').replace(' ', '')
+            nalezena_cena = float(clean_cena)
             pouzite_d_zo_sheetu = najblizsi['d']
             st.info(f"V cenníku nájdená cena: {nalezena_cena:.2f} €/m (pre d={pouzite_d_zo_sheetu} mm)")
         except:
