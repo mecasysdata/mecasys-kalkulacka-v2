@@ -656,7 +656,7 @@ if st.session_state.polozky_ponuky:
                         '\u20ac':'' # Toto je znak Euro ošetrený cez unicode
                     }
                     for k, v in replacements.items():
-                    t = t.replace(k, v)
+                        t = t.replace(k, v)
                     return t.strip()
                     
               
