@@ -29,253 +29,760 @@ def pridat_polozku():
     st.session_state.polozky_ponuky.append(nova_polozka)
     st.toast("Položka bola pridaná do ponuky! ✅")
 
-# --- NAČÍTANIE DÁT (POTREBNÉ PRE SELEKTY) ---
+# 1. premenná - dátum
+datum = st.date_input("Dátum", value=date.today())
+
+# 2. premenná - ponuka
+ponuka = st.text_input("Číslo ponuky")
+
+# 3. premenná - item
+item = st.text_input("Identifikátor položky")
+
+# 4. premenná - pocet_kusov
+pocet_kusov = st.number_input("Počet kusov", min_value=1, step=1, format="%d")
+
+# 5. premenná - narocnost
+narocnost = st.selectbox("Náročnosť", options=["1", "2", "3", "4", "5"])
+
+# 6. premenná - d
+d = st.number_input("Priemer komponentu [mm]", min_value=0.0, step=0.1, format="%.2f")
+
+# 7. premenná - l
+l = st.number_input("Dĺžka komponentu [mm]", min_value=0.0, step=0.1, format="%.2f")
+
+# --- SPRÁVNE NAČÍTANIE SHEETU ---
 sheet_url = "https://docs.google.com/spreadsheets/d/e/2PACX-1vRcCPwLT_Cm8Xpj4urw7DUa5FGGyWiCEKKl8ySUEnGtFjsKzbvwtw6MURs1TyqasHhAJsWcdP6d3Q7O/pub?gid=0&single=true&output=csv"
-sheet_zakaznici_url = "https://docs.google.com/spreadsheets/d/e/2PACX-1vSuHQWbpryWNerWr8aKKheHbzTPhXI6lS7YH1sL5zwFIIzLfpTZz47acY_ua2e_fVqEcfxMBe5wnjue/pub?gid=0&single=true&output=csv"
 
 @st.cache_data
 def load_data(url):
+    # Načítame CSV
+    data = pd.read_csv(url)
+    # Očistíme názvy stĺpcov od medzier (napr. z "hustota " urobí "hustota")
+    data.columns = data.columns.str.strip()
+    # Očistíme textové hodnoty v stĺpcoch material a akost
+    for col in ['material', 'akost']:
+        data[col] = data[col].astype(str).str.strip()
+    return data
+
+df_materialy = load_data(sheet_url)
+
+# --- 8. PREMENNÁ - Materiál ---
+seznam_materialov = sorted(df_materialy['material'].unique())
+
+# Výber materiálu uložíme priamo do pamäte aplikácie (session_state)
+st.session_state['material_volba'] = st.selectbox("Materiál", options=seznam_materialov)
+material = st.session_state['material_volba'] # Toto zabezpečí, že premenná 'material' existuje
+
+# 9. PREMENNÁ - Akosť (Dostupná pre všetky materiály)
+seznam_akosti = list(sorted(df_materialy[df_materialy['material'] == material]['akost'].unique()))
+seznam_akosti.append("Iná akosť (zadať ručne)")
+
+akost_vyber = st.selectbox("Akosť", options=seznam_akosti)
+
+# Ak užívateľ zvolí ručné zadanie akosti
+if akost_vyber == "Iná akosť (zadať ručne)":
+    akost = st.text_input("Zadajte názov novej akosti:")
+    if not akost:
+        st.warning("Prosím, zadajte názov akosti.")
+        st.stop()
+else:
+    akost = akost_vyber
+
+# 10. PREMENNÁ - HUSTOTA
+hustota = 0.0
+
+# A. Logika pre PLAST (hľadá v sheete)
+if material == "PLAST":
+    vyber = df_materialy[(df_materialy['material'] == material) & (df_materialy['akost'] == akost)]
+    if not vyber.empty:
+        raw_val = str(vyber['hustota'].values[0])
+        
+        # OPRAVA TU: Vymažeme medzery (aj tie špeciálne excelovské) a zmeníme čiarku na bodku
+        clean_val = raw_val.replace(',', '.').replace('\xa0', '').replace(' ', '')
+        
+        try:
+            hustota = float(clean_val)
+        except:
+            hustota = 0.0
+
+# B. Logika pre ostatné materiály (podľa tvojich podmienok)
+elif material == "NEREZ":
+    hustota = 8000.0
+elif material == "OCEĽ":
+    hustota = 7900.0
+elif material == "FAREBNÉ KOVY":
+    # Prevedieme akosť na text a nahradíme čiarku bodkou pre kontrolu
+    akost_test = str(akost).replace(',', '.')
+    
+    if akost_test.startswith("3.7"):
+        hustota = 4500.0
+    elif akost_test.startswith("3."):
+        hustota = 2900.0
+    elif akost_test.startswith("2."):
+        hustota = 9000.0
+    # Ak nová akosť farebného kovu nezačína týmito číslami, hustota zostane 0.0
+
+# --- ZOBRAZENIE / RUČNÉ DOPLNENIE ---
+if hustota <= 0:
+    hustota = st.number_input("Hustota nenájdená alebo neznáma. Zadajte manuálne [kg/m3]:", min_value=0.0, format="%.2f")
+else:
+    # Ak sa hustota určila automaticky, tu sa zobrazí a dá sa prepísať
+    hustota = st.number_input("Hustota materiálu [kg/m3]:", value=hustota, format="%.2f")
+
+# --- LOGIKA PRE UKLADANIE NOVEJ AKOSTI ---
+if akost_vyber == "Iná akosť (zadať ručne)":
+    st.markdown("---")
+    st.subheader("Uložiť novú akosť do databázy")
+    
+    if st.button("🚀 Odoslať do Google Sheet"):
+        if not akost or akost.strip() == "":
+            st.error("Chýba názov akosti!")
+        elif hustota <= 0:
+            st.error("Hustota musí byť väčšia ako 0!")
+        else:
+            url_api = "https://script.google.com/macros/s/AKfycbysapIykA2JulM9882rQmM3tfFvbvrmYDeW-iM5jyR4MTg8ZlNWhTdgV4pGxNhn6JNb/exec"
+            payload = {
+                "material": material,
+                "akost": akost,
+                "hustota": hustota
+            }
+            
+            try:
+                with st.spinner('Ukladám dáta...'):
+                    import requests
+                    response = requests.post(url_api, json=payload)
+                
+                if "Success" in response.text:
+                    st.success(f"Hotovo! Akosť '{akost}' bola pridaná do tabuľky.")
+                    st.cache_data.clear()
+                else:
+                    st.error(f"Server vrátil chybu: {response.text}")
+            except Exception as e:
+                st.error(f"Nepodarilo sa spojiť s Google Sheet: {e}")
+
+# Validácia pre zvyšok výpočtov
+if hustota <= 0:
+    st.warning("Pre pokračovanie je potrebné určiť hustotu materiálu.")
+    st.stop()
+
+
+
+# --- NAČÍTANIE SHEETU ZÁKAZNÍKOV ---
+sheet_zakaznici_url = "https://docs.google.com/spreadsheets/d/e/2PACX-1vSuHQWbpryWNerWr8aKKheHbzTPhXI6lS7YH1sL5zwFIIzLfpTZz47acY_ua2e_fVqEcfxMBe5wnjue/pub?gid=0&single=true&output=csv"
+
+
+@st.cache_data
+def load_customers(url):
     data = pd.read_csv(url)
     data.columns = data.columns.str.strip()
+    # Vyčistíme textové stĺpce
+    for col in data.columns:
+        if data[col].dtype == 'object':
+            data[col] = data[col].astype(str).str.strip()
+    return data
+
+df_zakaznici = load_customers(sheet_zakaznici_url)
+
+st.subheader("Informácie o zákazníkovi")
+
+# 11. PREMENNÁ - zakaznik
+# Do zoznamu pridáme možnosť pre nového zákazníka
+# --- TOTO PRIDAJ SEM (ešte pred riadok 153) ---
+if "novy_zakaznik_meno" in st.session_state:
+    st.session_state["vybrany_zakaznik"] = st.session_state["novy_zakaznik_meno"]
+    del st.session_state["novy_zakaznik_meno"] # Hneď to aj vymažeme, aby to nezavadzalo
+
+# 1. Vytvoríme základný zoznam z tabuľky
+
+seznam_zakaznikov = list(sorted(df_zakaznici['zakaznik'].unique()))
+
+# 2. KONTROLA: Ak sme práve uložili nového, pridáme ho do zoznamu umelo
+if "vybrany_zakaznik" in st.session_state:
+    meno_noveho = st.session_state["vybrany_zakaznik"]
+    if meno_noveho not in seznam_zakaznikov:
+        seznam_zakaznikov.append(meno_noveho)
+        seznam_zakaznikov.sort()
+
+# 3. Pridáme možnosť pre manuálne zadanie
+if "Nový zákazník (zadať ručne)" not in seznam_zakaznikov:
+    seznam_zakaznikov.append("Nový zákazník (zadať ručne)")
+
+zakaznik_vyber = st.selectbox("Vyberte zákazníka", options=seznam_zakaznikov,key="vybrany_zakaznik")
+
+# Inicializácia premenných
+zakaznik = ""
+krajina = ""
+lojalita = 0.0
+
+
+if zakaznik_vyber == "Nový zákazník (zadať ručne)":
+    # Ručné zadanie mena a krajiny (Tvoje pôvodné riadky)
+    zakaznik = st.text_input("Zadajte meno nového zákazníka:")
+    krajina = st.text_input("Zadajte krajinu zákazníka:")
+    
+    # 13. PREMENNÁ - lojalita pre nového zákazníka je automaticky 0.5
+    lojalita = 0.5
+
+    # --- NOVÁ ČASŤ: TLAČIDLO NA ULOŽENIE ---
+    if st.button("🚀 Uložiť zákazníka do databázy"):
+        if zakaznik and krajina:
+            # Pripravíme dáta presne podľa tvojich názvov
+            payload = {
+                "zakaznik": zakaznik,
+                "krajina": krajina,
+                "lojalita": lojalita
+            }
+            try:
+                # Odošle dáta do tvojho Google Apps Scriptu
+                api_url = "https://script.google.com/macros/s/AKfycbwNR33wxSNXJFo9-o2otM-mdKQE22s3i3y5n08dY7eogGhhKDTasiPn3zaOoSihppTq/exec"
+                requests.post(api_url, json=payload)
+                st.session_state["novy_zakaznik_meno"] = zakaznik
+                st.success(f"Zákazník **{zakaznik}** bol odoslaný do tabuľky!")
+                
+            except Exception as e:
+                st.error(f"Chyba pri komunikácii s Google Sheets: {e}")
+        else:
+            st.warning("Prosím, vyplňte meno aj krajinu pred uložením.")
+    # ----------------------------------------
+
+    if not zakaznik or not krajina:
+        st.warning("Prosím, vyplňte meno aj krajinu zákazníka.")
+        st.stop()
+
+else:
+    # 11. PREMENNÁ - zakaznik (zo zoznamu)
+    zakaznik = zakaznik_vyber
+    data_zakaznika = df_zakaznici[df_zakaznici['zakaznik'] == zakaznik]
+    
+    if not data_zakaznika.empty:
+        # 12. PREMENNÁ - krajina (zo sheetu)
+        krajina = str(data_zakaznika['krajina'].values[0])
+        
+        # 13. PREMENNÁ - lojalita (zo sheetu)
+        raw_lojalita = str(data_zakaznika['lojalita'].values[0])
+        clean_lojalita = re.sub(r'[^0-9.]', '', raw_lojalita.replace(',', '.'))
+        try:
+            lojalita = float(clean_lojalita)
+        except ValueError:
+            lojalita = 0.5
+    else:
+        # Ak je data_zakaznika prázdne, znamená to, že zákazník je v pamäti, 
+        # ale ešte nie je v Google CSV. Hodnoty už máme zadané z formulára.
+        if not krajina:
+            krajina = "Neznáma" 
+        if not lojalita:
+            lojalita = 0.5
+       
+
+# Zobrazenie výsledných hodnôt pre kontrolu
+st.info(f"Zákazník: **{zakaznik}** | Krajina: **{krajina}** | Lojalita: **{lojalita}**")
+
+# --- NAČÍTANIE SHEETU CENA MATERIÁLU ---
+sheet_cena_url = "https://docs.google.com/spreadsheets/d/e/2PACX-1vRKPX6HAAr7R3anJH9brFYZdgdnoVasW2NkR-O-hgUv3NebNSbWaKRuC3_CifXgeKsvi1K3na4-gZxU/pub?gid=0&single=true&output=csv"
+
+@st.cache_data
+def load_material_prices(url):
+    data = pd.read_csv(url)
+    data.columns = data.columns.str.strip()
+    # Očistíme texty pre presné párovanie
     for col in ['material', 'akost']:
         if col in data.columns:
             data[col] = data[col].astype(str).str.strip()
     return data
 
-df_materialy = load_data(sheet_url)
-df_zakaznici = load_data(sheet_zakaznici_url)
+df_ceny = load_material_prices(sheet_cena_url)
 
-# =================================================================
-# 1. RIADOK: ZÁKAZNÍK, DÁTUM, ČÍSLO PONUKY
-# =================================================================
-col_zak, col_dat, col_cp = st.columns([2, 1, 1])
 
-with col_zak:
-    seznam_zakaznikov = list(sorted(df_zakaznici['zakaznik'].unique()))
-    if "Nový zákazník (zadať ručne)" not in seznam_zakaznikov:
-        seznam_zakaznikov.append("Nový zákazník (zadať ručne)")
-    zakaznik_vyber = st.selectbox("Vyberte zákazníka", options=seznam_zakaznikov, key="vybrany_zakaznik")
+# --- 14. PREMENNÁ: CENA MATERIÁLU (S MOŽNOSŤOU RUČNEJ ÚPRAVY) ---
+st.subheader("Cena materiálu")
 
-with col_dat:
-    datum = st.date_input("Dátum", value=date.today())
-
-with col_cp:
-    ponuka = st.text_input("Číslo ponuky")
-
-# --- LOGIKA ZÁKAZNÍKA (Krajina, Lojalita) ---
-zakaznik = ""
-krajina = ""
-lojalita = 0.5
-
-if zakaznik_vyber == "Nový zákazník (zadať ručne)":
-    c1, c2 = st.columns(2)
-    with c1: zakaznik = st.text_input("Meno nového zákazníka:")
-    with c2: krajina = st.text_input("Krajina zákazníka:")
-    if st.button("🚀 Uložiť zákazníka do databázy"):
-        if zakaznik and krajina:
-            payload = {"zakaznik": zakaznik, "krajina": krajina, "lojalita": 0.5}
-            api_url = "https://script.google.com/macros/s/AKfycbwNR33wxSNXJFo9-o2otM-mdKQE22s3i3y5n08dY7eogGhhKDTasiPn3zaOoSihppTq/exec"
-            requests.post(api_url, json=payload)
-            st.success(f"Zákazník {zakaznik} uložený!")
-else:
-    zakaznik = zakaznik_vyber
-    data_zak = df_zakaznici[df_zakaznici['zakaznik'] == zakaznik]
-    if not data_zak.empty:
-        krajina = str(data_zak['krajina'].values[0])
-        raw_loj = str(data_zak['lojalita'].values[0]).replace(',', '.')
-        lojalita = float(re.sub(r'[^0-9.]', '', raw_loj)) if raw_loj else 0.5
-
-st.caption(f"🌍 Krajina: {krajina} | 💎 Lojalita: {lojalita}")
-
-# =================================================================
-# 2. RIADOK: ITEM, KS, NÁROČNOSŤ, D, L
-# =================================================================
-st.write("---")
-c_it, c_ks, c_na, c_d, c_l = st.columns([1.5, 1, 1, 1, 1])
-
-with c_it: item = st.text_input("Identifikátor položky")
-with c_ks: pocet_kusov = st.number_input("Počet kusov", min_value=1, step=1, format="%d")
-with c_na: narocnost = st.selectbox("Náročnosť", options=["1", "2", "3", "4", "5"])
-with c_d: d = st.number_input("Priemer d [mm]", min_value=0.0, step=0.1, format="%.2f")
-with c_l: l = st.number_input("Dĺžka l [mm]", min_value=0.0, step=0.1, format="%.2f")
-
-# =================================================================
-# 3. RIADOK: MATERIÁL, AKOSŤ, KOOPERÁCIA
-# =================================================================
-c_mat, c_ako, c_kop = st.columns([1.5, 1.5, 1])
-
-with c_mat:
-    seznam_materialov = sorted(df_materialy['material'].unique())
-    material = st.selectbox("Materiál", options=seznam_materialov)
-
-with c_ako:
-    seznam_akosti = list(sorted(df_materialy[df_materialy['material'] == material]['akost'].unique()))
-    seznam_akosti.append("Iná akosť (zadať ručne)")
-    akost_vyber = st.selectbox("Akosť", options=seznam_akosti)
-
-with c_kop:
-    st.write(" ")
-    je_kooperacia = st.checkbox("Kooperácia?", value=False, key="chk_koop_final")
-
-# Logika pre akosť a hustotu
-if akost_vyber == "Iná akosť (zadať ručne)":
-    akost = st.text_input("Názov novej akosti:")
-    hustota = 0.0
-else:
-    akost = akost_vyber
-    hustota = 0.0
-    if material == "PLAST":
-        vyber = df_materialy[(df_materialy['material'] == material) & (df_materialy['akost'] == akost)]
-        if not vyber.empty:
-            hustota = float(str(vyber['hustota'].values[0]).replace(',', '.').replace('\xa0', '').replace(' ', ''))
-    elif material == "NEREZ": hustota = 8000.0
-    elif material == "OCEĽ": hustota = 7900.0
-    elif material == "FAREBNÉ KOVY":
-        akost_t = str(akost).replace(',', '.')
-        if akost_t.startswith("3.7"): hustota = 4500.0
-        elif akost_t.startswith("3."): hustota = 2900.0
-        elif akost_t.startswith("2."): hustota = 9000.0
-
-hustota = st.number_input("Hustota materiálu [kg/m3]:", value=hustota, format="%.2f")
-
-# --- LOGIKA PRE ZÁPIS NOVEJ AKOSTI ---
-if akost_vyber == "Iná akosť (zadať ručne)" and st.button("💾 Uložiť akosť do databázy"):
-    url_api = "https://script.google.com/macros/s/AKfycbysapIykA2JulM9882rQmM3tfFvbvrmYDeW-iM5jyR4MTg8ZlNWhTdgV4pGxNhn6JNb/exec"
-    requests.post(url_api, json={"material": material, "akost": akost, "hustota": hustota})
-    st.success("Akosť uložená!")
-
-if hustota <= 0: st.stop()
-
-# =================================================================
-# VÝPOČTY (MATERIÁL, NÁKLADY, MODELY)
-# =================================================================
-st.divider()
-
-# Cena materiálu
-sheet_cena_url = "https://docs.google.com/spreadsheets/d/e/2PACX-1vRKPX6HAAr7R3anJH9brFYZdgdnoVasW2NkR-O-hgUv3NebNSbWaKRuC3_CifXgeKsvi1K3na4-gZxU/pub?gid=0&single=true&output=csv"
-df_ceny = load_data(sheet_cena_url)
+# 1. KROK: Inicializácia základnej ceny na 0.0
 nalezena_cena = 0.0
+pouzite_d_zo_sheetu = None
+
+# 2. KROK: Pokus o automatické vyhľadanie v cenníku
 mask = (df_ceny['material'] == material) & (df_ceny['akost'] == akost)
-dostupne = df_ceny[mask].copy()
-if not dostupne.empty:
-    vhodne = dostupne[dostupne['d'] >= d]
-    if not vhodne.empty:
-        nalezena_cena = float(str(vhodne.sort_values(by='d').iloc[0]['cena']).replace(',', '.'))
+dostupne_rozmery = df_ceny[mask].copy()
 
-cena_za_meter = st.number_input("Cena materiálu [€/m]:", value=nalezena_cena, format="%.2f")
-cena_material = cena_za_meter * (l / 1000)
+if not dostupne_rozmery.empty:
+    vhodne_riadky = dostupne_rozmery[dostupne_rozmery['d'] >= d]
+    if not vhodne_riadky.empty:
+        najblizsi = vhodne_riadky.sort_values(by='d').iloc[0]
+        try:
+            # Očistíme a načítame cenu z tabuľky
+            raw_cena = str(najblizsi['cena'])
+            clean_cena = raw_cena.replace(',', '.').replace('\xa0', '').replace(' ', '')
+            nalezena_cena = float(clean_cena)
+            pouzite_d_zo_sheetu = najblizsi['d']
+            st.info(f"V cenníku nájdená cena: {nalezena_cena:.2f} €/m (pre d={pouzite_d_zo_sheetu} mm)")
+        except:
+            nalezena_cena = 0.0
+    else:
+        st.warning("V cenníku nie je dostatočne veľký priemer (d).")
+else:
+    st.warning("Materiál/akost sa v cenníku nenachádza.")
 
-# Uloženie do cenníka ak chýba
-if nalezena_cena == 0 and st.button("💾 Uložiť cenu do cenníka"):
-    url_cennik = "https://script.google.com/macros/s/AKfycbzrIngx_yh9h--ilq_SV3glHARaLb7pncAVEsrIQG9JQBRolvuzWcPTCq2EHuFtewgeXw/exec"
-    requests.post(url_cennik, json={"material": material, "akost": akost, "d": d, "cena": cena_za_meter})
-    st.success("Cena uložená!")
+# 3. KROK: Interaktívne políčko (Widget)
+cena_za_meter = st.number_input(
+    "Potvrďte alebo upravte cenu materiálu za meter [€/m]:", 
+    min_value=0.0, 
+    value=nalezena_cena, 
+    format="%.2f", 
+    key="final_price_input"
+)
 
-# Technické výpočty
+# 4. KROK: Finálny výpočet na kus
+cena_material = cena_za_meter * (l / 1000) 
+
+if cena_material > 0:
+    st.metric("Vypočítaná cena materiálu na 1 kus", f"{cena_material:.2f} €")
+    
+    # --- LOGIKA PRE ULOŽENIE NOVEJ CENY ---
+    if nalezena_cena == 0:
+        st.info("💡 Tento rozmer/materiál nie je v cenníku. Môžete ho pridať jedným kliknutím.")
+        
+        d_pre_cennik = st.number_input("Potvrďte priemer polotovaru pre cenník [mm]:", value=float(d), key="d_cennik")
+        
+        if st.button("💾 Uložiť túto cenu do cenníka"):
+            url_cennik = "https://script.google.com/macros/s/AKfycbzrIngx_yh9h--ilq_SV3glHARaLb7pncAVEsrIQG9JQBRolvuzWcPTCq2EHuFtewgeXw/exec"
+            
+            payload = {
+                "material": material,     
+                "akost": akost,           
+                "d": d_pre_cennik,        
+                "cena": cena_za_meter     
+            }
+            try:
+                with st.spinner('Zapisujem do cenníka...'):
+                    res = requests.post(url_cennik, json=payload, timeout=10)
+                
+                    if res.status_code == 200:
+                        st.success(f"✅ Hotovo! Materiál {material} {akost} s priemerom {d_pre_cennik} bol pridaný do cenníka.")
+                        st.cache_data.clear()
+                    else:
+                        st.error(f"Chyba pri ukladaní (Kód: {res.status_code})")
+            except Exception as e:
+                st.error(f"Nepodarilo sa spojiť: {e}")
+else:
+    st.error("Pre pokračovanie musí byť cena materiálu vyššia ako 0.0")
+    st.stop()
+
+# 15. PREMENNÁ - Hmotnosť kusu
+# Používame premenné d (6.) a l (7.), ktoré už máš definované vyššie
 hmotnost = hustota * (math.pi / 4) * (d / 1000)**2 * (l / 1000)
+
+# Zobrazenie výsledku pre kontrolu
+st.write(f"**Hmotnosť 1 kusu:** {hmotnost:.4f} kg")
+
+# 16. PREMENNÁ - Plocha prierezu v mm2
 plocha_prierezu = (math.pi * d**2) / 4
+
+# Zobrazenie výsledku
+st.write(f"**Plocha prierezu:** {plocha_prierezu:.2f} mm²")
+
+# 17. PREMENNÁ - Plocha prierezu v dm2
+# Prevod z mm2 na dm2 (delíme 10 000)
 plocha_prierez_dm2 = plocha_prierezu / 10000
+
+# Zobrazenie výsledku
+st.write(f"**Plocha prierezu v dm²:** {plocha_prierez_dm2:.4f} dm²")
+
+# 18. PREMENNÁ - Plocha plášťa v mm2
+# Vzorec: obvod kruhu (pi * d) vynásobený dĺžkou (l)
 plocha_plasta = math.pi * d * l
 
-# Kooperácia
-cena_kooperacia = 0.0
+# Zobrazenie výsledku
+st.write(f"**Plocha plášťa:** {plocha_plasta:.2f} mm²")
+
+# --- NOVÉ NAČÍTANIE SHEETU KOOPERÁCIE (GID 1180392224) ---
+sheet_koop_cennik_url = "https://docs.google.com/spreadsheets/d/e/2PACX-1vRfPBZ4TCpQyiqybU0ADu3AMwHCi2qOKifQAOnnTWnorVNJ1SVxtN6zJzXthOxCVwtXWp__Bp_-nto0/pub?gid=1180392224&single=true&output=csv"
+
+@st.cache_data
+def load_koop_cennik(url):
+    data = pd.read_csv(url)
+    data.columns = data.columns.str.strip()
+    # Vyčistíme texty pre presné párovanie
+    for col in ['druh', 'material', 'jednotka']:
+        if col in data.columns:
+            data[col] = data[col].astype(str).str.strip()
+    return data
+
+df_koop_cennik = load_koop_cennik(sheet_koop_cennik_url)
+
+# --- 19. PREMENNÁ: KOOPERÁCIA (OPRAVENÁ) ---
+st.subheader("Kooperácia")
+
+je_kooperacia = st.checkbox("Vyžaduje tento diel kooperáciu?", value=False, key="chk_koop_final")
+cena_kooperacia = 0.0 
+
 if je_kooperacia:
-    sheet_koop_url = "https://docs.google.com/spreadsheets/d/e/2PACX-1vRfPBZ4TCpQyiqybU0ADu3AMwHCi2qOKifQAOnnTWnorVNJ1SVxtN6zJzXthOxCVwtXWp__Bp_-nto0/pub?gid=1180392224&single=true&output=csv"
-    df_koop = load_data(sheet_koop_url)
-    vybrany_druh = st.selectbox("Druh kooperácie", options=sorted(df_koop['druh'].unique()))
-    riadok_koop = df_koop[(df_koop['druh'] == vybrany_druh)].iloc[0]
+    # Používame df_koop_cennik (názov musí sedieť s tým, čo si načítala cez pandas)
+    zoznam_druhov = sorted(df_koop_cennik['druh'].unique())
+    vybrany_druh = st.selectbox("Vyberte druh kooperácie", options=zoznam_druhov, key="sb_druh_final")
+    
+    mats_pre_druh = sorted(df_koop_cennik[df_koop_cennik['druh'] == vybrany_druh]['material'].unique())
+    vybrany_mat_koop = st.selectbox("Potvrďte materiál kooperácie", options=mats_pre_druh, key="sb_mat_final")
+    
+    # Vytiahnutie konkrétneho riadku
+    riadok_koop = df_koop_cennik[(df_koop_cennik['druh'] == vybrany_druh) & (df_koop_cennik['material'] == vybrany_mat_koop)].iloc[0]
+    
     tarifa = float(riadok_koop['tarifa'])
     jednotka = str(riadok_koop['jednotka']).strip().lower()
-    vyp_cena = tarifa * hmotnost if jednotka == "kg" else tarifa * plocha_prierez_dm2
-    cena_kooperacia = max(vyp_cena, float(riadok_koop['minimum']) / pocet_kusov)
+    minimum_objednavka = float(riadok_koop['minimum'])
+    
+    vypocitana_jednotkova_cena = 0.0
+    if jednotka == "kg":
+        vypocitana_jednotkova_cena = tarifa * hmotnost
+    elif jednotka == "dm2":
+        vypocitana_jednotkova_cena = tarifa * plocha_prierez_dm2
+        
+    celkova_suma_v_davke = pocet_kusov * vypocitana_jednotkova_cena
+    
+    if celkova_suma_v_davke < minimum_objednavka:
+        cena_kooperacia = minimum_objednavka / pocet_kusov
+        st.warning(f"Suma kooperácie nedosiahla limit. Cena na kus bola prepočítaná z minima.")
+    else:
+        cena_kooperacia = vypocitana_jednotkova_cena
 
+    st.metric("Výsledná cena kooperácie na kus", f"{cena_kooperacia:.2f} €")
+else:
+    st.info("Diel je bez kooperácie.")
+    cena_kooperacia = 0.0
+
+# 20. PREMENNÁ - Vstupné náklady na 1 kus
+# Sčítame cenu materiálu (14. premenná) a cenu kooperácie (19. premenná)
 vstupne_naklady = cena_material + cena_kooperacia
 
-# Modely (M1 a M2)
-cas = 0.0
-predikovana_cena_m2 = 0.0
+# Zobrazenie pre kontrolu
+st.subheader("Súčet vstupných nákladov")
+col1, col2 = st.columns(2)
+col1.metric("Materiál", f"{cena_material:.2f} €")
+col2.metric("Kooperácia", f"{cena_kooperacia:.2f} €")
+
+st.metric("CELKOVÉ VSTUPNÉ NÁKLADY (na kus)", f"{vstupne_naklady:.2f} €")
+
+# --- 21. PREMENNÁ: MODEL 1 (PREDIKCIA ČASU) ---
+st.subheader("Predikcia výrobného času (Model 1)")
 
 try:
-    with open('MECASYS_APP/stlpce_modelu.pkl', 'rb') as f: m_cols = pickle.load(f)
-    m1 = XGBRegressor(); m1.load_model('MECASYS_APP/finalny_model.json')
-    inp1 = pd.DataFrame(0, index=[0], columns=m_cols)
-    inp1['pocet_kusov'] = np.log1p(pocet_kusov); inp1['d'] = d; inp1['l'] = l
-    inp1['plocha_prierezu'] = plocha_prierezu; inp1['plocha_plasta'] = plocha_plasta
-    for p, v in {'material': material, 'akost': akost, 'narocnost': narocnost}.items():
-        if f"{p}_{v}" in inp1.columns: inp1[f"{p}_{v}"] = 1
-    cas = np.expm1(m1.predict(inp1)[0])
+    # 1. Načítanie súborov z podpriecinka MECASYS_APP
+    # Upravené cesty k súborom:
+    with open('MECASYS_APP/stlpce_modelu.pkl', 'rb') as f:
+        model_columns = pickle.load(f)
 
-    with open('MECASYS_APP/model_columns.pkl', 'rb') as f: m2_cols = pickle.load(f)
-    m2 = XGBRegressor(); m2.load_model('MECASYS_APP/xgb_model_cena.json')
-    inp2 = pd.DataFrame(0, index=[0], columns=m2_cols)
-    inp2['cas'] = cas; inp2['hmotnost'] = hmotnost; inp2['plocha_prierezu'] = plocha_prierezu; inp2['hustota'] = hustota
-    if f"krajina_{krajina}" in inp2.columns: inp2[f"krajina_{krajina}"] = 1
-    predikovana_cena_m2 = np.expm1(m2.predict(inp2)[0])
-except: pass
+    loaded_model = XGBRegressor()
+    loaded_model.load_model('MECASYS_APP/finalny_model.json')
 
-# =================================================================
-# 4. RIADOK: SUMARIZÁCIA VÝSLEDKOV
-# =================================================================
-st.subheader("📊 Výsledky predikcie")
-res1, res2, res3, res4, res5 = st.columns(5)
-with res1: st.metric("Čas (M1)", f"{cas:.2f} min")
-with res2: st.metric("Cena (M2)", f"{predikovana_cena_m2:.2f} €")
-with res3: st.metric("Hmotnosť", f"{hmotnost:.4f} kg")
-with res4: st.metric("Plášť", f"{plocha_plasta:.0f} mm²")
-with res5: st.metric("Prierez", f"{plocha_prierezu:.2f} mm²")
+    # 2. Vytvorenie prázdneho riadku
+    input_df = pd.DataFrame(0, index=[0], columns=model_columns)
 
-# Kontrola nákladov a finálna cena
+    # 3. Transformácia vstupov
+    input_df['pocet_kusov'] = np.log1p(pocet_kusov)
+    input_df['d'] = d
+    input_df['l'] = l
+    input_df['plocha_prierezu'] = plocha_prierezu
+    input_df['plocha_plasta'] = plocha_plasta
+
+    # 4. Kategórie (One-Hot Encoding)
+    for prefix, value in {'material': material, 'akost': akost, 'narocnost': narocnost}.items():
+        col_name = f"{prefix}_{value}"
+        if col_name in input_df.columns:
+            input_df[col_name] = 1
+
+    # 5. Predikcia a inverzná transformácia
+    log_predikcia = loaded_model.predict(input_df)[0]
+    cas = np.expm1(log_predikcia)
+
+    # 6. Zobrazenie
+    if cas > 0:
+        st.success(f"Výrobný čas bol úspešne predikovaný.")
+        c1, c2 = st.columns(2)
+        c1.metric("Čas na 1 kus", f"{cas:.2f} min")
+        c2.metric("Celkový čas dávky", f"{cas * pocet_kusov:.1f} min")
+    else:
+        st.error("Model vrátil neplatný čas.")
+
+except Exception as e:
+    # Ak súbory stále nevidí, vypíše sa presná cesta, ktorú Python hľadá
+    st.warning(f"Model 1 zatiaľ nie je pripravený alebo chýbajú súbory. (Chyba: {e})")
+
+# --- 22. PREMENNÁ: MODEL 2 (PREDIKCIA CENY) ---
+st.subheader("Predikcia výslednej ceny (Model M2)")
+
+# Používame tvoju 12. premennú 'krajina'
+# Ak ju máš v kóde definovanú vyššie, tu ju len prevezmeme.
+
+try:
+    # 1. Načítanie súborov z podpriecinka MECASYS_APP
+    # model_columns.pkl (stĺpce) a xgb_model_cena.json (model)
+    with open('MECASYS_APP/model_columns.pkl', 'rb') as f:
+        m2_columns = pickle.load(f)
+
+    model_m2 = XGBRegressor()
+    model_m2.load_model('MECASYS_APP/xgb_model_cena.json')
+
+    # 2. Príprava vstupného riadku (všetko na nulu)
+    input_m2 = pd.DataFrame(0, index=[0], columns=m2_columns)
+
+    # 3. Naplnenie číselných hodnôt (Inžiniering)
+    # cas (z Modelu 1 v minútach), hmotnost, plocha_prierezu a hustota
+    if 'cas' in input_m2.columns:
+        input_m2['cas'] = cas
+    
+    if 'hmotnost' in input_m2.columns:
+        input_m2['hmotnost'] = hmotnost
+        
+    if 'plocha_prierezu' in input_m2.columns:
+        input_m2['plocha_prierezu'] = plocha_prierezu
+        
+    if 'hustota' in input_m2.columns:
+        input_m2['hustota'] = hustota
+
+    # 4. Kategorické vstupy (Krajina z 12. premennej)
+    # Model pri One-Hot Encodingu očakáva stĺpec v tvare 'krajina_Názov'
+    col_krajina = f"krajina_{krajina}"
+    
+    if col_krajina in input_m2.columns:
+        input_m2[col_krajina] = 1
+    else:
+        # Ak by užívateľ zadal krajinu, ktorú model nikdy nevidel, 
+        # model bude predikovať "neutrálnu" cenu (všetky krajiny = 0)
+        pass
+
+    # 5. Predikcia (Inverzná transformácia logaritmu)
+    log_pred_m2 = model_m2.predict(input_m2)[0]
+    predikovana_cena_m2 = np.expm1(log_pred_m2)
+
+    # 6. Zobrazenie výsledku
+    if predikovana_cena_m2 > 0:
+        st.success(f"Model M2 úspešne predikoval cenu pre krajinu: **{krajina}**")
+        st.metric("Predikovaná trhová cena", f"{predikovana_cena_m2:.2f} €")
+    else:
+        st.error("Model M2 vrátil neplatný výsledok.")
+
+except Exception as e:
+    # Ak súbory na Gite nie sú v správnom priečinku, tu uvidíš chybu
+    st.warning(f"Model M2 nie je k dispozícii. (Chyba: {e})")
+
+# zaciatok upravy ceny
 st.divider()
+
+# 1. Porovnanie a hláška
 if vstupne_naklady >= predikovana_cena_m2:
-    st.error(f"⚠️ Pozor! Náklady ({vstupne_naklady:.2f} €) sú vyššie ako predikcia.")
+    st.error(f"⚠️ **POZOR:** Vstupné náklady ({vstupne_naklady:.2f} €) sú vyššie alebo rovné ako predikovaná cena ({predikovana_cena_m2:.2f} €).")
 else:
-    st.info(f"💡 Vstupné náklady: {vstupne_naklady:.2f} €")
+    st.info(f"💡 Vstupné náklady sú {vstupne_naklady:.2f} €.")
 
-predikovana_cena_m2 = st.number_input("Finálna predajná cena [€/ks]:", value=float(predikovana_cena_m2), format="%.2f", key="final_user_p")
+# 2. Políčko pre potvrdenie alebo zadanie vlastnej ceny
+# Táto premenná 'predikovana_cena_m2' sa následne zapíše do ponuky, sheetu aj PDF
+predikovana_cena_m2 = st.number_input(
+    "Potvrďte alebo upravte finálnu predajnú cenu na kus [€]:",
+    min_value=0.0,
+    value=float(predikovana_cena_m2),
+    format="%.2f",
+    key="final_m2_price_user"
+)
+# koniec upravy ceny
 
-# =================================================================
-# KOŠÍK, EXPORTY A PDF (Pôvodná logika)
-# =================================================================
-st.button("➕ Pridať do ponuky", on_click=pridat_polozku)
+st.divider()
+st.subheader("📦 Aktuálna cenová ponuka")
+
+# Tlačidlo na pridanie
+st.button("➕ Pridať aktuálny výpočet do ponuky", on_click=pridat_polozku)
 
 if st.session_state.polozky_ponuky:
-    st.table(pd.DataFrame(st.session_state.polozky_ponuky))
+    # Zobrazenie tabuľky s položkami
+    df_ponuka = pd.DataFrame(st.session_state.polozky_ponuky)
+    st.table(df_ponuka)
+    
+    # Výpočet celkovej sumy
     celkova_suma = sum([float(i['Spolu'].replace(' €', '')) for i in st.session_state.polozky_ponuky])
     st.metric("CELKOVÁ CENA PONUKY", f"{celkova_suma:.2f} €")
     
-    if st.button("🗑️ Vymazať ponuku"):
-        st.session_state.polozky_ponuky = []; st.rerun()
+    # Tlačidlo na vymazanie
+    if st.button("🗑️ Vymazať celú ponuku"):
+        st.session_state.polozky_ponuky = []
+        st.rerun()
+else:
+    st.info("Ponuka je prázdna. Pridajte prvú položku pomocou tlačidla vyššie.")
 
-    if st.button("Zapísať do Google Sheet"):
-        url_s = "https://script.google.com/macros/s/AKfycbwjChtJjHiZZyU8nVVpHKhcRj2z77pqrJNTw6rDm9dy_WzFaX6Yj0zzbmCSeHU7r8UUyA/exec"
-        items_payload = []
-        for i, p in enumerate(st.session_state.polozky_ponuky):
-            items_payload.append({
-                "datum": date.today().strftime("%d.%m.%Y"), "cislo_cp": ponuka, "zakaznik": zakaznik,
-                "item_nazov": p["item"], "material": p["Materiál"], "akost": p["Akosť"], "pocet_kusov": p["Kusov"],
-                "jednotkova_cena": float(p["Cena/ks (M2)"].replace(' €', '')), "cena_spolu": float(p["Spolu"].replace(' €', ''))
-            })
-        requests.post(url_s, json={"items": items_payload})
-        st.success("Zapísané!")
+# --- EXPORT DO GOOGLE SHEET (CEZ APPS SCRIPT) ---
+st.divider()
 
-    # PDF Export
-    if st.button("Pripraviť finálne PDF"):
-        pdf = FPDF(orientation='L', unit='mm', format='A4'); pdf.add_page()
-        pdf.set_font("Helvetica", "B", 16); pdf.cell(0, 10, "CENOVA PONUKA", ln=True)
-        pdf.set_font("Helvetica", "", 10)
-        pdf.cell(0, 7, f"Zakaznik: {zakaznik}", ln=True)
-        pdf.ln(10)
-        pdf.set_font("Helvetica", "B", 9)
-        cols = ["Item", "Material", "Rozmer", "Ks", "Cena/ks", "Spolu"]
-        w = [30, 60, 50, 20, 40, 40]
-        for i, h in enumerate(cols): pdf.cell(w[i], 10, h, border=1, align='C')
-        pdf.ln(); pdf.set_font("Helvetica", "", 8)
-        for p in st.session_state.polozky_ponuky:
-            pdf.cell(w[0], 8, str(p['item']), border=1)
-            pdf.cell(w[1], 8, f"{p['Materiál']} {p['Akosť']}", border=1)
-            pdf.cell(w[2], 8, p['Rozmer (d x l)'], border=1)
-            pdf.cell(w[3], 8, str(p['Kusov']), border=1, align='C')
-            pdf.cell(w[4], 8, p['Cena/ks (M2)'], border=1, align='R')
-            pdf.cell(w[5], 8, p['Spolu'], border=1, align='R')
-            pdf.ln()
-        st.download_button("⬇️ Stiahnuť PDF", data=bytes(pdf.output()), file_name="ponuka.pdf", mime="application/pdf")
+if st.session_state.polozky_ponuky:
+    st.subheader("🚀 Odoslanie do databázy")
+    
+    if st.button("Zapísať celú ponuku do Google Sheet"):
+        # Tvoja URL z Apps Scriptu
+        url_scriptu = "https://script.google.com/macros/s/AKfycbwjChtJjHiZZyU8nVVpHKhcRj2z77pqrJNTw6rDm9dy_WzFaX6Yj0zzbmCSeHU7r8UUyA/exec"
+        
+        # Príprava balíka dát
+        data_na_odoslanie = {
+            "items": []
+        }
+        
+        # Vygenerujeme jedno číslo CP pre celú túto dávku
+        cislo_cp = "CP-" + datetime.datetime.now().strftime("%Y%m%d-%H%M")
+        dnesny_datum = datetime.date.today().strftime("%d.%m.%Y")
+
+        try:
+            # Prechádzame položky v košíku a mapujeme ich na stĺpce v Sheete
+            for i, item in enumerate(st.session_state.polozky_ponuky):
+                
+                # OŠETRENIE DÁT: Prevod textových hodnôt z tabuľky na čisté čísla
+                # Odstránime " min" a " €", aby sme mohli použiť float()
+                cisty_cas = float(str(item["Čas (M1)"]).replace(' min', '').replace(',', '.').strip())
+                cista_jednotkova_cena = float(str(item["Cena/ks (M2)"]).replace(' €', '').replace(',', '.').strip())
+                cista_suma_polozky = float(str(item["Spolu"]).replace(' €', '').replace(',', '.').strip())
+                cisty_pocet_kusov = int(item["Kusov"])
+
+                data_na_odoslanie["items"].append({
+                    "datum": dnesny_datum,
+                    "cislo_cp": cislo_cp,
+                    "zakaznik": zakaznik,      # Premenná 13
+                    "krajina": krajina,        # Premenná 12
+                    "lojalita": lojalita if 'lojalita' in locals() else "N/A",
+                    "item_nazov": item.get("ID", item.get("item", f"Item {i+1}")), 
+                    "material": item["Materiál"],
+                    "akost": item["Akosť"],
+                    "d": d,
+                    "l": l,
+                    "hustota": hustota,
+                    "hmotnost": hmotnost,
+                    "narocnost": narocnost,
+                    "j_cena_mat": cena_za_meter,
+                    "naklad_mat": cena_material,
+                    "naklad_koop": cena_kooperacia,
+                    "vstupne_naklady": cena_material + cena_kooperacia,
+                    "cas": cisty_cas,
+                    "jednotkova_cena": cista_jednotkova_cena,
+                    "pocet_kusov": cisty_pocet_kusov,
+                    "cena_spolu": cista_suma_polozky
+                })
+
+            # Odoslanie requestu
+            with st.spinner("Odosielam dáta do Google Sheet..."):
+                response = requests.post(url_scriptu, json=data_na_odoslanie, timeout=10)
+                
+            if response.status_code == 200:
+                st.success(f"✅ Ponuka {cislo_cp} bola úspešne zapísaná do databázy!")
+                # Voliteľné: Ak chceš po úspešnom zápise vymazať košík, odkomentuj riadky nižšie:
+                # st.session_state.polozky_ponuky = []
+                # st.rerun()
+            else:
+                st.error(f"Chyba servera (Apps Script): {response.status_code}")
+                
+        except KeyError as e:
+            st.error(f"Chyba v názve stĺpca: {e}. Skontroluj, či sa názvy v tabuľke zhodujú s kódom.")
+        except Exception as e:
+            st.error(f"Nepodarilo sa spojiť s Google Scriptom: {e}")
+else:
+    st.info("Pridajte položky do ponuky, aby ste ich mohli exportovať.")
+
+
+# --- UPRAVENÝ SKRIPT PRE PDF (Kompletné informácie) ---
+
+# --- ABSOLÚTNE FINÁLNA VERZIA PRE PDF (Materiál + Kooperácia + Celková cena) ---
+
+if st.session_state.polozky_ponuky:
+    st.write("---")
+    st.subheader("📄 Exportovať kompletnú ponuku do PDF")
+
+    col_pdf, _ = st.columns([1, 2])
+
+    with col_pdf:
+        if st.button("Pripraviť finálne PDF"):
+            try:
+                def clean(txt):
+                    t = str(txt)
+                    replacements = {
+                        'á':'a','é':'e','í':'i','ó':'o','ú':'u','ý':'y','č':'c','ď':'d','ľ':'l','ň':'n','ŕ':'r','š':'s','ť':'t','ž':'z',
+                        'Á':'A','É':'E','Í':'I','Ó':'O','Ú':'U','Ý':'Y','Č':'C','Ď':'D','Ľ':'L','Ĺ':'L','ň':'n','ŕ':'r','Š':'S','Ť':'T','Ž':'Z',
+                        '\u20ac':'' # Toto je znak Euro ošetrený cez unicode
+                    }
+                    for k, v in replacements.items():
+                        t = t.replace(k, v)
+                    return t.strip()
+                    
+              
+                # Inicializácia PDF (Landscape)
+                pdf = FPDF(orientation='L', unit='mm', format='A4')
+                pdf.add_page()
+                
+                # HLAVIČKA
+                pdf.set_font("Helvetica", "B", 16)
+                pdf.cell(0, 10, "CENOVA PONUKA", ln=True, align='L')
+                
+                pdf.set_font("Helvetica", "", 10)
+                c_ponuky = ponuka if ponuka else datetime.datetime.now().strftime("%Y%m%d-%H%M")
+                d_ponuky = datum.strftime("%d.%m.%Y")
+                
+                pdf.cell(0, 7, clean(f"Cislo CP: {c_ponuky}"), ln=True)
+                pdf.cell(0, 7, clean(f"Datum vystavenia: {d_ponuky}"), ln=True)
+                pdf.cell(0, 7, clean(f"Zakaznik: {zakaznik} ({krajina})"), ln=True)
+                pdf.ln(10)
+                
+                # DEFINÍCIA TABUĽKY - VŠETKY NÁKLADOVÉ POLOŽKY
+                # Headers: Pridané Mat/ks aj Koop/ks
+                headers = ["Item", "Material", "Rozmer", "Ks", "Mat/ks", "Koop/ks", "Cena/ks", "Spolu"]
+                # Šírky stĺpcov (dokopy cca 275mm)
+                widths = [20, 50, 45, 15, 30, 30, 40, 45]
+                
+                # Hlavička tabuľky
+                pdf.set_font("Helvetica", "B", 9)
+                pdf.set_fill_color(240, 240, 240)
+                for i in range(len(headers)):
+                    pdf.cell(widths[i], 10, clean(headers[i]), border=1, align='C', fill=True)
+                pdf.ln()
+                
+                # DÁTA
+                pdf.set_font("Helvetica", "", 8)
+                suma_vsetko = 0
+                
+                for i, p in enumerate(st.session_state.polozky_ponuky):
+                    try:
+                        cista_suma_str = str(p['Spolu']).replace('€', '').replace(',', '.').strip()
+                        suma_vsetko += float(cista_suma_str)
+                    except:
+                        pass
+
+                    # Zápis riadku
+                    pdf.cell(widths[0], 8, clean(item if item else f"Pol. {i+1}"), border=1)
+                    pdf.cell(widths[1], 8, clean(p['Materiál']) + " " + clean(p['Akosť']), border=1)
+                    pdf.cell(widths[2], 8, clean(p['Rozmer (d x l)']), border=1)
+                    pdf.cell(widths[3], 8, str(p['Kusov']), border=1, align='C')
+                    
+                    # CENA MATERIÁLU (z premennej cena_material)
+                    pdf.cell(widths[4], 8, f"{cena_material:.2f} EUR", border=1, align='R')
+                    
+                    # CENA KOOPERÁCIE (z premennej cena_kooperacia)
+                    pdf.cell(widths[5], 8, f"{cena_kooperacia:.2f} EUR", border=1, align='R')
+                    
+                    # FINÁLNA CENA ZA KUS A CELKOM
+                    pdf.cell(widths[6], 8, clean(p['Cena/ks (M2)']) + " EUR", border=1, align='R')
+                    pdf.cell(widths[7], 8, clean(p['Spolu']) + " EUR", border=1, align='R')
+                    pdf.ln()
+                
+                # CELKOVÁ SUMA PONUKY
+                pdf.ln(5)
+                pdf.set_font("Helvetica", "B", 12)
+                pdf.cell(sum(widths[:-1]), 10, "CELKOVA CENA PONUKY SPOLU (EUR):", border=0, align='R')
+                pdf.cell(widths[-1], 10, f"{suma_vsetko:.2f}", border=1, align='C')
+                
+                # Pätička
+                pdf.set_y(-25)
+                pdf.set_font("Helvetica", "I", 8)
+                pdf.cell(0, 10, f"Vygenerovane systemom MECASYS - {datetime.datetime.now().strftime('%d.%m.%Y %H:%M')}", 0, 0, 'C')
+
+                pdf_output = pdf.output()
+                
+                st.download_button(
+                    label="⬇️ Stiahnuť finálnu ponuku (PDF)",
+                    data=bytes(pdf_output),
+                    file_name=f"Ponuka_{zakaznik}_{c_ponuky}.pdf",
+                    mime="application/pdf"
+                )
+                st.success("PDF ponuka je pripravená na stiahnutie!")
+
+            except Exception as e:
+                st.error(f"Chyba pri generovaní PDF: {e}")
