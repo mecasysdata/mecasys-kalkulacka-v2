@@ -292,6 +292,7 @@ def load_material_prices(url):
 
 df_ceny = load_material_prices(sheet_cena_url)
 
+
 # --- 14. PREMENNÁ: CENA MATERIÁLU (S MOŽNOSŤOU RUČNEJ ÚPRAVY) ---
 st.subheader("Cena materiálu")
 
@@ -343,13 +344,13 @@ if cena_material > 0:
         d_pre_cennik = st.number_input("Potvrďte priemer polotovaru pre cenník [mm]:", value=float(d), key="d_cennik")
         
         if st.button("💾 Uložiť túto cenu do cenníka"):
-            url_cennik = "https://script.google.com/macros/s/AKfycbxuPKOucjMFtZB4Xwzc_4XmfFsITC4BAAEsGNO2NBZRKpv3sVeokOcPEvlgVZR2f6xO6Q/exec"
+            url_cennik = "https://script.google.com/macros/s/AKfycbzrIngx_yh9h--ilq_SV3glHARaLb7pncAVEsrIQG9JQBRolvuzWcPTCq2EHuFtewgeXw/exec"
             
             payload = {
-                "material": material,     # Premenná 8 (vstup od užívateľa)
-                "akost": akost,           # Premenná 9 (vstup od užívateľa)
-                "d": d_pre_cennik,        # Priemer polotovaru
-                "cena": cena_za_meter     # Cena za meter, ktorú užívateľ práve zadal
+                "material": material,     
+                "akost": akost,           
+                "d": d_pre_cennik,        
+                "cena": cena_za_meter     
             }
             try:
                 with st.spinner('Zapisujem do cenníka...'):
@@ -365,8 +366,6 @@ if cena_material > 0:
 else:
     st.error("Pre pokračovanie musí byť cena materiálu vyššia ako 0.0")
     st.stop()
-
-
 
 # 15. PREMENNÁ - Hmotnosť kusu
 # Používame premenné d (6.) a l (7.), ktoré už máš definované vyššie
