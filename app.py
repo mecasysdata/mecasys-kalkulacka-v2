@@ -278,7 +278,7 @@ else:
 st.info(f"Zákazník: **{zakaznik}** | Krajina: **{krajina}** | Lojalita: **{lojalita}**")
 
 # --- NAČÍTANIE SHEETU CENA MATERIÁLU ---
-sheet_cena_url = "https://docs.google.com/spreadsheets/d/e/2PACX-1vRfPBZ4TCpQyiqybU0ADu3AMwHCi2qOKifQAOnnTWnorVNJ1SVxtN6zJzXthOxCVwtXWp__Bp_-nto0/pub?gid=901617097&single=true&output=csv"
+sheet_cena_url = "https://docs.google.com/spreadsheets/d/e/2PACX-1vRKPX6HAAr7R3anJH9brFYZdgdnoVasW2NkR-O-hgUv3NebNSbWaKRuC3_CifXgeKsvi1K3na4-gZxU/pub?gid=0&single=true&output=csv"
 
 @st.cache_data
 def load_material_prices(url):
