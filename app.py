@@ -11,29 +11,6 @@ import datetime
 from fpdf import FPDF
 import io
 
-# --- RIADOK 1 ---
-col1, col2, col3 = st.columns(3)
-with col1:
-    zakaznik = st.text_input("Zákazník")
-with col2:
-    datum = st.date_input("Dátum", value=date.today())
-with col3:
-    ponuka = st.text_input("Číslo ponuky")
-
-# --- RIADOK 2 ---
-col1, col2, col3, col4, col5 = st.columns(5)
-with col1:
-    item = st.text_input("Identifikátor položky")
-with col2:
-    pocet_kusov = st.number_input("Počet kusov", min_value=1, step=1, format="%d")
-with col3:
-    narocnost = st.selectbox("Náročnosť", options=["1", "2", "3", "4", "5"])
-with col4:
-    d = st.number_input("Priemer [mm]", min_value=0.0, step=0.1, format="%.2f")
-with col5:
-    l = st.number_input("Dĺžka [mm]", min_value=0.0, step=0.1, format="%.2f")
-
-
 # --- INICIALIZÁCIA KOŠÍKA (SESSION STATE) ---
 if 'polozky_ponuky' not in st.session_state:
     st.session_state.polozky_ponuky = []
@@ -51,6 +28,27 @@ def pridat_polozku():
     }
     st.session_state.polozky_ponuky.append(nova_polozka)
     st.toast("Položka bola pridaná do ponuky! ✅")
+
+# 1. premenná - dátum
+datum = st.date_input("Dátum", value=date.today())
+
+# 2. premenná - ponuka
+ponuka = st.text_input("Číslo ponuky")
+
+# 3. premenná - item
+item = st.text_input("Identifikátor položky")
+
+# 4. premenná - pocet_kusov
+pocet_kusov = st.number_input("Počet kusov", min_value=1, step=1, format="%d")
+
+# 5. premenná - narocnost
+narocnost = st.selectbox("Náročnosť", options=["1", "2", "3", "4", "5"])
+
+# 6. premenná - d
+d = st.number_input("Priemer komponentu [mm]", min_value=0.0, step=0.1, format="%.2f")
+
+# 7. premenná - l
+l = st.number_input("Dĺžka komponentu [mm]", min_value=0.0, step=0.1, format="%.2f")
 
 # --- SPRÁVNE NAČÍTANIE SHEETU ---
 sheet_url = "https://docs.google.com/spreadsheets/d/e/2PACX-1vRcCPwLT_Cm8Xpj4urw7DUa5FGGyWiCEKKl8ySUEnGtFjsKzbvwtw6MURs1TyqasHhAJsWcdP6d3Q7O/pub?gid=0&single=true&output=csv"
@@ -398,20 +396,6 @@ plocha_plasta = math.pi * d * l
 
 # Zobrazenie výsledku
 st.write(f"**Plocha plášťa:** {plocha_plasta:.2f} mm²")
-
-# --- RIADOK 4 ---
-col1, col2, col3, col4, col5 = st.columns(5)
-with col1:
-    st.metric("Predikcia M1 (čas)", f"{cas:.2f} min")
-with col2:
-    st.metric("Predikcia M2 (cena)", f"{predikovana_cena_m2:.2f} €")
-with col3:
-    st.metric("Hmotnosť", f"{hmotnost:.4f} kg")
-with col4:
-    st.metric("Plocha plášťa", f"{plocha_plasta:.2f} mm²")
-with col5:
-    st.metric("Plocha prierezu", f"{plocha_prierezu:.2f} mm²")
-
 
 # --- NOVÉ NAČÍTANIE SHEETU KOOPERÁCIE (GID 1180392224) ---
 sheet_koop_cennik_url = "https://docs.google.com/spreadsheets/d/e/2PACX-1vRfPBZ4TCpQyiqybU0ADu3AMwHCi2qOKifQAOnnTWnorVNJ1SVxtN6zJzXthOxCVwtXWp__Bp_-nto0/pub?gid=1180392224&single=true&output=csv"
