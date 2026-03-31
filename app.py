@@ -45,6 +45,8 @@ def pridat_polozku():
         "Akosť": akost,
         "Rozmer (d x l)": f"{d} x {l} mm",
         "Kusov": pocet_kusov,
+        "Mat/ks": cena_material,
+        "Koop/ks": cena_kooperacia,
         "Čas (M1)": f"{cas:.2f} min",
         "Cena/ks (M2)": f"{predikovana_cena_m2:.2f} €",
         "Spolu": f"{predikovana_cena_m2 * pocet_kusov:.2f} €"
@@ -700,8 +702,6 @@ else:
     st.info("Pridajte položky do ponuky, aby ste ich mohli exportovať.")
 
 
-# --- UPRAVENÝ SKRIPT PRE PDF (Kompletné informácie) ---
-
 # --- ABSOLÚTNE FINÁLNA VERZIA PRE PDF (Materiál + Kooperácia + Celková cena) ---
 
 if st.session_state.polozky_ponuky:
@@ -773,10 +773,10 @@ if st.session_state.polozky_ponuky:
                     pdf.cell(widths[3], 8, str(p['Kusov']), border=1, align='C')
                     
                     # CENA MATERIÁLU (z premennej cena_material)
-                    pdf.cell(widths[4], 8, f"{cena_material:.2f} EUR", border=1, align='R')
+                    pdf.cell(widths[4], 8, f"{p['Mat/ks']:.2f} EUR", border=1, align='R')
                     
                     # CENA KOOPERÁCIE (z premennej cena_kooperacia)
-                    pdf.cell(widths[5], 8, f"{cena_kooperacia:.2f} EUR", border=1, align='R')
+                    pdf.cell(widths[5], 8, f"{p['Koop/ks']:.2f} EUR", border=1, align='R')
                     
                     # FINÁLNA CENA ZA KUS A CELKOM
                     pdf.cell(widths[6], 8, clean(p['Cena/ks (M2)']) + " EUR", border=1, align='R')
