@@ -45,8 +45,6 @@ def pridat_polozku():
         "Akosť": akost,
         "Rozmer (d x l)": f"{d} x {l} mm",
         "Kusov": pocet_kusov,
-        "Mat/ks": cena_material,
-        "Koop/ks": cena_kooperacia,
         "Čas (M1)": f"{cas:.2f} min",
         "Cena/ks (M2)": f"{predikovana_cena_m2:.2f} €",
         "Spolu": f"{predikovana_cena_m2 * pocet_kusov:.2f} €"
@@ -401,6 +399,19 @@ plocha_plasta = math.pi * d * l
 # Zobrazenie výsledku
 st.write(f"**Plocha plášťa:** {plocha_plasta:.2f} mm²")
 
+# --- RIADOK 4 ---
+col1, col2, col3, col4, col5 = st.columns(5)
+with col1:
+    st.metric("Predikcia M1 (čas)", f"{cas:.2f} min")
+with col2:
+    st.metric("Predikcia M2 (cena)", f"{predikovana_cena_m2:.2f} €")
+with col3:
+    st.metric("Hmotnosť", f"{hmotnost:.4f} kg")
+with col4:
+    st.metric("Plocha plášťa", f"{plocha_plasta:.2f} mm²")
+with col5:
+    st.metric("Plocha prierezu", f"{plocha_prierezu:.2f} mm²")
+
 
 # --- NOVÉ NAČÍTANIE SHEETU KOOPERÁCIE (GID 1180392224) ---
 sheet_koop_cennik_url = "https://docs.google.com/spreadsheets/d/e/2PACX-1vRfPBZ4TCpQyiqybU0ADu3AMwHCi2qOKifQAOnnTWnorVNJ1SVxtN6zJzXthOxCVwtXWp__Bp_-nto0/pub?gid=1180392224&single=true&output=csv"
@@ -614,20 +625,6 @@ if st.session_state.polozky_ponuky:
 else:
     st.info("Ponuka je prázdna. Pridajte prvú položku pomocou tlačidla vyššie.")
 
-# --- RIADOK 4 ---
-col1, col2, col3, col4, col5 = st.columns(5)
-with col1:
-    st.metric("Predikcia M1 (čas)", f"{cas:.2f} min")
-with col2:
-    st.metric("Predikcia M2 (cena)", f"{predikovana_cena_m2:.2f} €")
-with col3:
-    st.metric("Hmotnosť", f"{hmotnost:.4f} kg")
-with col4:
-    st.metric("Plocha plášťa", f"{plocha_plasta:.2f} mm²")
-with col5:
-    st.metric("Plocha prierezu", f"{plocha_prierezu:.2f} mm²")
-
-
 # --- EXPORT DO GOOGLE SHEET (CEZ APPS SCRIPT) ---
 st.divider()
 
@@ -702,6 +699,8 @@ else:
     st.info("Pridajte položky do ponuky, aby ste ich mohli exportovať.")
 
 
+# --- UPRAVENÝ SKRIPT PRE PDF (Kompletné informácie) ---
+
 # --- ABSOLÚTNE FINÁLNA VERZIA PRE PDF (Materiál + Kooperácia + Celková cena) ---
 
 if st.session_state.polozky_ponuky:
@@ -767,16 +766,16 @@ if st.session_state.polozky_ponuky:
                         pass
 
                     # Zápis riadku
-                    pdf.cell(widths[0], 8, clean(p['item']), border=1)
+                    pdf.cell(widths[0], 8, clean(item if item else f"Pol. {i+1}"), border=1)
                     pdf.cell(widths[1], 8, clean(p['Materiál']) + " " + clean(p['Akosť']), border=1)
                     pdf.cell(widths[2], 8, clean(p['Rozmer (d x l)']), border=1)
                     pdf.cell(widths[3], 8, str(p['Kusov']), border=1, align='C')
                     
                     # CENA MATERIÁLU (z premennej cena_material)
-                    pdf.cell(widths[4], 8, f"{p['Mat/ks']:.2f} EUR", border=1, align='R')
+                    pdf.cell(widths[4], 8, f"{cena_material:.2f} EUR", border=1, align='R')
                     
                     # CENA KOOPERÁCIE (z premennej cena_kooperacia)
-                    pdf.cell(widths[5], 8, f"{p['Koop/ks']:.2f} EUR", border=1, align='R')
+                    pdf.cell(widths[5], 8, f"{cena_kooperacia:.2f} EUR", border=1, align='R')
                     
                     # FINÁLNA CENA ZA KUS A CELKOM
                     pdf.cell(widths[6], 8, clean(p['Cena/ks (M2)']) + " EUR", border=1, align='R')
