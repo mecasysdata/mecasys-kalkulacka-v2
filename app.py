@@ -597,7 +597,7 @@ if st.session_state.polozky_ponuky:
                     "zakaznik": zakaznik,      # Premenná 13
                     "krajina": krajina,        # Premenná 12
                     "lojalita": lojalita if 'lojalita' in locals() else "N/A",
-                    "item_nazov": f"Item {i+1}", 
+                    "item_nazov": item.get("ID", item.get("item", f"Item {i+1}")), 
                     "material": item["Materiál"],
                     "akost": item["Akosť"],
                     "d": d,
