@@ -767,7 +767,7 @@ if st.session_state.polozky_ponuky:
                         pass
 
                     # Zápis riadku
-                    pdf.cell(widths[0], 8, clean(item if item else f"Pol. {i+1}"), border=1)
+                    pdf.cell(widths[0], 8, clean(p['item']), border=1)
                     pdf.cell(widths[1], 8, clean(p['Materiál']) + " " + clean(p['Akosť']), border=1)
                     pdf.cell(widths[2], 8, clean(p['Rozmer (d x l)']), border=1)
                     pdf.cell(widths[3], 8, str(p['Kusov']), border=1, align='C')
