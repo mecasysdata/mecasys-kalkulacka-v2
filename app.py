@@ -563,9 +563,27 @@ try:
 except Exception as e:
     # Ak súbory na Gite nie sú v správnom priečinku, tu uvidíš chybu
     st.warning(f"Model M2 nie je k dispozícii. (Chyba: {e})")
-# zaciatok upravy ceny
 
-# koniec upravy ceny 
+# zaciatok upravy ceny
+st.divider()
+
+# 1. Porovnanie a hláška
+if vstupne_naklady >= predikovana_cena_m2:
+    st.error(f"⚠️ **POZOR:** Vstupné náklady ({vstupne_naklady:.2f} €) sú vyššie alebo rovné ako predikovaná cena ({predikovana_cena_m2:.2f} €).")
+else:
+    st.info(f"💡 Vstupné náklady sú {vstupne_naklady:.2f} €.")
+
+# 2. Políčko pre potvrdenie alebo zadanie vlastnej ceny
+# Táto premenná 'predikovana_cena_m2' sa následne zapíše do ponuky, sheetu aj PDF
+predikovana_cena_m2 = st.number_input(
+    "Potvrďte alebo upravte finálnu predajnú cenu na kus [€]:",
+    min_value=0.0,
+    value=float(predikovana_cena_m2),
+    format="%.2f",
+    key="final_m2_price_user"
+)
+# koniec upravy ceny
+
 st.divider()
 st.subheader("📦 Aktuálna cenová ponuka")
 
