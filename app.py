@@ -333,12 +333,41 @@ cena_za_meter = st.number_input(
 )
 
 # 4. KROK: Finálny výpočet na kus
-cena_material = cena_za_meter * (l / 1000)
+cena_material = cena_za_meter * (l / 1000) 
 
 if cena_material > 0:
     st.metric("Vypočítaná cena materiálu na 1 kus", f"{cena_material:.2f} €")
+    
+    # --- LOGIKA PRE ULOŽENIE NOVEJ CENY ---
+    # Tlačidlo sa zobrazí len vtedy, ak sa v sheete predtým nič nenašlo (nalezena_cena == 0)
+    if nalezena_cena == 0:
+        st.info("💡 Tento rozmer/materiál nie je v cenníku. Môžete ho pridať jedným kliknutím.")
+        
+        # Potvrdenie priemeru (d), ktorý sa zapíše do stĺpca E
+        d_pre_cennik = st.number_input("Potvrďte priemer polotovaru pre cenník [mm]:", value=float(d), key="d_cennik")
+        
+        if st.button("💾 Uložiť túto cenu do cenníka"):
+            url_cennik = "https://script.google.com/macros/s/AKfycbxuPKOucjMFtZB4Xwzc_4XmfFsITC4BAAEsGNO2NBZRKpv3sVeokOcPEvlgVZR2f6xO6Q/exec"
+            
+            payload = {
+                "material": material,     # Premenná 8 (vstup od užívateľa)
+                "akost": akost,           # Premenná 9 (vstup od užívateľa)
+                "d": d_pre_cennik,        # Priemer polotovaru
+                "cena": cena_za_meter     # Cena za meter, ktorú užívateľ práve zadal
+            }
+            try:
+            with st.spinner('Zapisujem do cenníka...'):
+                res = requests.post(url_cennik, json=payload, timeout=10)
+            
+                # TENTO RIADOK MUSÍ BYŤ ODSADENÝ ROVNAKO AKO 'res = ...'
+                if res.status_code == 200:
+                    st.success(f"✅ Hotovo! Materiál {material} {akost} s priemerom {d_pre_cennik} bol pridaný do cenníka.")
+                    st.cache_data.clear()
+                else:
+                    st.error(f"Chyba pri ukladaní (Kód: {res.status_code})")
+           
 else:
-    st.error("Pre pokračovanie musí byť cena materiálu vyššia ako 0.")
+    st.error("Pre pokračovanie musí byť cena materiálu vyššia ako 0.0")
     st.stop()
 
 # 15. PREMENNÁ - Hmotnosť kusu
