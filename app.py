@@ -399,19 +399,6 @@ plocha_plasta = math.pi * d * l
 # Zobrazenie výsledku
 st.write(f"**Plocha plášťa:** {plocha_plasta:.2f} mm²")
 
-# --- RIADOK 4 ---
-col1, col2, col3, col4, col5 = st.columns(5)
-with col1:
-    st.metric("Predikcia M1 (čas)", f"{cas:.2f} min")
-with col2:
-    st.metric("Predikcia M2 (cena)", f"{predikovana_cena_m2:.2f} €")
-with col3:
-    st.metric("Hmotnosť", f"{hmotnost:.4f} kg")
-with col4:
-    st.metric("Plocha plášťa", f"{plocha_plasta:.2f} mm²")
-with col5:
-    st.metric("Plocha prierezu", f"{plocha_prierezu:.2f} mm²")
-
 
 # --- NOVÉ NAČÍTANIE SHEETU KOOPERÁCIE (GID 1180392224) ---
 sheet_koop_cennik_url = "https://docs.google.com/spreadsheets/d/e/2PACX-1vRfPBZ4TCpQyiqybU0ADu3AMwHCi2qOKifQAOnnTWnorVNJ1SVxtN6zJzXthOxCVwtXWp__Bp_-nto0/pub?gid=1180392224&single=true&output=csv"
@@ -624,6 +611,20 @@ if st.session_state.polozky_ponuky:
         st.rerun()
 else:
     st.info("Ponuka je prázdna. Pridajte prvú položku pomocou tlačidla vyššie.")
+
+# --- RIADOK 4 ---
+col1, col2, col3, col4, col5 = st.columns(5)
+with col1:
+    st.metric("Predikcia M1 (čas)", f"{cas:.2f} min")
+with col2:
+    st.metric("Predikcia M2 (cena)", f"{predikovana_cena_m2:.2f} €")
+with col3:
+    st.metric("Hmotnosť", f"{hmotnost:.4f} kg")
+with col4:
+    st.metric("Plocha plášťa", f"{plocha_plasta:.2f} mm²")
+with col5:
+    st.metric("Plocha prierezu", f"{plocha_prierezu:.2f} mm²")
+
 
 # --- EXPORT DO GOOGLE SHEET (CEZ APPS SCRIPT) ---
 st.divider()
