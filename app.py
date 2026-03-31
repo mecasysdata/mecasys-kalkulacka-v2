@@ -650,10 +650,15 @@ if st.session_state.polozky_ponuky:
             try:
                 def clean(txt):
                     t = str(txt)
-                    replacements = {'á':'a','é':'e','í':'i','ó':'o','ú':'u','ý':'y','č':'c','ď':'d','ľ':'l','ň':'n','ŕ':'r','š':'s','ť':'t','ž':'z','Á':'A','É':'E','Í':'I','Ó':'O','Ú':'U','Ý':'Y','Č':'C','Ď':'D','Ľ':'L','Ĺ:'L','Ň':'N','Ŕ':'R','Š':'S','Ť':'T','Ž':'Z','\u20ac':''}
+                    replacements = {
+                        'á':'a','é':'e','í':'i','ó':'o','ú':'u','ý':'y','č':'c','ď':'d','ľ':'l','ň':'n','ŕ':'r','š':'s','ť':'t','ž':'z',
+                        'Á':'A','É':'E','Í':'I','Ó':'O','Ú':'U','Ý':'Y','Č':'C','Ď':'D','Ľ':'L','Ĺ':'L','ň':'n','ŕ':'r','Š':'S','Ť':'T','Ž':'Z',
+                        '\u20ac':'' # Toto je znak Euro ošetrený cez unicode
+                    }
                     for k, v in replacements.items():
-                        t = t.replace(k, v)
+                    t = t.replace(k, v)
                     return t.strip()
+                    
               
                 # Inicializácia PDF (Landscape)
                 pdf = FPDF(orientation='L', unit='mm', format='A4')
