@@ -92,18 +92,21 @@ else:
 hustota = 0.0
 
 # A. Logika pre PLAST (hľadá v sheete)
+
 if material == "PLAST":
-    vyber = df_materialy[(df_materialy['material'] == material) & (df_materialy['akost'] == akost)]
-    if not vyber.empty:
-        raw_val = str(vyber['hustota'].values[0])
-        
-        # OPRAVA TU: Vymažeme medzery (aj tie špeciálne excelovské) a zmeníme čiarku na bodku
-        clean_val = raw_val.replace(',', '.').replace('\xa0', '').replace(' ', '')
-        
-        try:
-            hustota = float(clean_val)
-        except:
-            hustota = 0.0
+        vyber = df_materialy[(df_materialy['material'] == material) & (df_materialy['akost'] == akost)]
+        if not vyber.empty:
+            raw_val = str(vyber['hustota'].values[0])
+            
+            # --- OPRAVA PRE FORMÁT 1,500.00 ---
+            # 1. Najprv odstránime čiarku (tisíckový oddeľovač)
+            # 2. Potom zaistíme, že tam nie sú medzery
+            clean_val = raw_val.replace(',', '').replace(' ', '').strip()
+            
+            try:
+                hustota = float(clean_val)
+            except:
+                hustota = 0.0
 
 # B. Logika pre ostatné materiály (podľa tvojich podmienok)
 elif material == "NEREZ":
